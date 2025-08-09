@@ -1,0 +1,79 @@
+---
+description: Next.js Project Guidelines for Dashboard Template
+globs: ["**/*.tsx", "**/*.ts", "**/*.js", "**/*.jsx", "**/*.json"]
+alwaysApply: false
+---
+# Next.js Project Guidelines
+
+---
+
+## 1. Project Structure
+
+* Use the **`src`** directory for all source code.
+* Place pages in **`src/pages`**.
+* Place shared components in the **`src/components`** directory.
+* Place utility functions and helpers in the **`src/lib`** directory.
+* Place global styles and Tailwind configuration in **`src/styles`**.
+* Use **lowercase with dashes** for directories (e.g., `src/components/common-ui`).
+* For better readability, consider setting up **path aliases** in `tsconfig.json` (e.g., `@/components/*`) to avoid long relative paths like `../../../components/Button`.
+
+---
+
+## 2. Dependency and Library Management
+
+Since you're using **Next.js version 14.2.30**, always verify that any external libraries, UI components, or utilities you add are compatible with this specific version and the **Pages Router** architecture by checking their official documentation. Newer libraries might be designed with the App Router first, so confirming Pages Router support is crucial to prevent unexpected build errors or runtime issues.
+
+---
+
+## 3. Components
+
+* Distinguish between **page components** (in `src/pages`) and **reusable components** (in `src/components`).
+* Keep page components focused on layout and data flow.
+* Create small, single-purpose reusable components.
+* Use **`next/dynamic`** for dynamically importing components that aren't critical for the initial page load (e.g., modals, components below the fold).
+* Define **TypeScript interfaces or types** for component props next to the component definition for clarity.
+
+---
+
+## 4. Performance
+
+* Optimize images using the **`next/image`** component for automatic optimization, WebP format conversion, and lazy loading.
+* Choose the right data fetching method for performance:
+    * **`getStaticProps` (SSG)** for pages that can be pre-rendered at build time.
+    * **`getServerSideProps` (SSR)** for pages that require fresh data on every request.
+* Minimize the use of **`useEffect`** for data fetching. Prefer `getStaticProps` or `getServerSideProps` for the initial data.
+* Implement proper caching strategies for server-side fetched data.
+
+---
+
+## 5. Data Fetching
+
+* Use **`getStaticProps`** or **`getServerSideProps`** in your page files for server-side data fetching.
+* For client-side data fetching (e.g., fetching data after user interaction), use libraries like **SWR** or **React Query**.
+* Always implement proper **loading and error states** when fetching data.
+
+---
+
+## 6. Routing
+
+* Use the **file-system based routing** within the `src/pages` directory. A file like `src/pages/about.tsx` automatically becomes the `/about` route.
+* For dynamic routes, use **bracket notation** in filenames (e.g., `src/pages/posts/[id].tsx`).
+* Use the **`useRouter`** hook for programmatic navigation and accessing router properties.
+* To create a shared layout for all pages, create a custom `App` component (**`src/pages/_app.tsx`**) and wrap the page `Component` with your layout.
+
+---
+
+## 7. Forms and Validation
+
+* Use a library like **Zod** for schema-based form validation on both the client and server.
+* Always implement **server-side validation** as a security measure, even if client-side validation exists.
+* Handle form errors gracefully and display clear messages to the user.
+* Show loading states (e.g., disabling the submit button) during form submission to prevent multiple submissions.
+
+---
+
+## 8. State Management
+
+* Minimize client-side state. Fetch data via page props whenever possible.
+* Use **React Context** for global state that is truly global (e.g., theme, user authentication), but use it sparingly to avoid performance issues.
+* For complex client-side state, consider a dedicated state management library like **Zustand** or **Jotai**, which are lightweight and work well with Next.js. 
