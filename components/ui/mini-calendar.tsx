@@ -23,9 +23,14 @@ const DAYS_OF_WEEK = [
   { key: "sat", label: "Sat" },
 ];
 
-export const Calendar: React.FC = () => {
-  const [selectedDate, setSelectedDate] = React.useState<Date>(new Date());
-  const [currentWeek, setCurrentWeek] = React.useState<Date>(new Date());
+export type CalendarProps = {
+  value?: Date;
+  onChange?: (date: Date) => void;
+};
+
+export const Calendar: React.FC<CalendarProps> = ({ value, onChange }) => {
+  const [selectedDate, setSelectedDate] = React.useState<Date>(value ?? new Date());
+  const [currentWeek, setCurrentWeek] = React.useState<Date>(value ?? new Date());
 
   const weekDays = eachDayOfInterval({
     start: startOfWeek(currentWeek, { weekStartsOn: 0 }),
@@ -78,7 +83,10 @@ export const Calendar: React.FC = () => {
                 "h-9 w-9 p-0 font-normal",
                 isSelected && "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground"
               )}
-              onClick={() => setSelectedDate(day)}
+              onClick={() => {
+                setSelectedDate(day);
+                onChange?.(day);
+              }}
             >
               <time dateTime={format(day, "yyyy-MM-dd")}>
                 {format(day, "d")}
