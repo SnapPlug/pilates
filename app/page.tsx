@@ -1,103 +1,105 @@
-import Image from "next/image";
+import { DrawArrow } from "@/components/ui/drawarrow";
+import React from "react"
+import { NavigationBar } from "@/components/ui/navigation-bar";
+import { TestimonialsSection } from "@/components/blocks/testimonials-with-marquee";
+import { DeviceFrame } from "@/components/ui/device-frame";
 
-export default function Home() {
+export default function Page() {
+  const testimonials = [
+    {
+      author: {
+        name: "김필라테스",
+        handle: "필라테스 강사",
+        avatar: "/SnapPlug Logo.png"
+      },
+      text: "카카오톡으로 예약 관리하니 정말 편해요! 회원들이 쉽게 예약하고 취소할 수 있어서 만족도가 높아졌습니다.",
+      href: "#"
+    },
+    {
+      author: {
+        name: "이요가",
+        handle: "요가 스튜디오 운영자",
+        avatar: "/SnapPlug Logo.png"
+      },
+      text: "복잡한 관리 시스템 없이도 효율적으로 운영할 수 있어요. 특히 회원권 관리가 훨씬 간편해졌습니다.",
+      href: "#"
+    },
+    {
+      author: {
+        name: "박피트니스",
+        handle: "피트니스 센터 매니저",
+        avatar: "/SnapPlug Logo.png"
+      },
+      text: "회원들이 카카오톡으로 바로 예약하고 확인할 수 있어서 전화 문의가 줄어들었어요. 운영 효율성이 크게 향상되었습니다.",
+      href: "#"
+    },
+    {
+      author: {
+        name: "최헬스",
+        handle: "헬스클럽 대표",
+        avatar: "/SnapPlug Logo.png"
+      },
+      text: "간단하고 직관적인 인터페이스가 마음에 들어요. 기술에 익숙하지 않은 직원들도 쉽게 사용할 수 있습니다.",
+      href: "#"
+    },
+    {
+      author: {
+        name: "정웰빙",
+        handle: "웰빙센터 운영자",
+        avatar: "/SnapPlug Logo.png"
+      },
+      text: "회원권 상태와 예약 현황을 실시간으로 확인할 수 있어서 관리가 훨씬 수월해졌어요. 정말 추천합니다!",
+      href: "#"
+    }
+  ];
+
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+    <div>
+      {/* 히어로 섹션 - 텍스트와 DeviceFrame */}
+      <div className="relative min-h-screen flex flex-col">
+        {/* 텍스트 섹션 */}
+        <div className="flex-1 flex flex-col items-center justify-center pt-20 pb-10 z-20 relative">
+          <div className="text-center">
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-center px-4 text-black mb-6">
+              가장 익숙한 채널로, 가장 간편한 운영을
+            </h1>
+            <p className="text-base sm:text-lg text-gray-600 text-center px-4 max-w-xl mb-8">
+              카카오톡·네이버톡톡 기반의 가볍고 빠른 스튜디오 운영관리 솔루션
+            </p>
+            <button className="py-3 px-8 rounded-xl bg-black text-white font-semibold hover:bg-gray-800 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-black/50">
+              시작하기
+            </button>
+          </div>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
+        
+        {/* DeviceFrame 섹션 */}
+        <div className="flex-1 flex items-center justify-center z-10 relative">
+          <DeviceFrame
+            mobileContent={{
+              type: 'image',
+              src: '/mobile demo.jpeg',
+              alt: '아이폰 카카오톡 챗봇 화면'
+            }}
+            desktopContent={{
+              type: 'image',
+              src: '/desktop demo.png',
+              alt: '아이패드 관리자 페이지 화면'
+            }}
           />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+        </div>
+      </div>
+      
+      {/* 테스티모니얼 섹션 */}
+      <TestimonialsSection
+        title="고객들의 생생한 후기"
+        description="실제 사용 중인 스튜디오 운영자들의 솔직한 후기를 들어보세요"
+        testimonials={testimonials}
+      />
+      
+      {/* 네비게이션 섹션 */}
+      <div className="flex w-full h-screen justify-center items-center">
+        <NavigationBar />
+      </div>
     </div>
   );
 }
