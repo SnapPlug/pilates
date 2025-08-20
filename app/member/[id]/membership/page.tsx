@@ -216,46 +216,69 @@ export default function MembershipPage() {
     try {
       const latestMembership = membershipHistory[0];
       
-      // 회원권 히스토리 업데이트 (상태 포함, 잔여횟수 자동 계산 적용)
-      const { error: historyError } = await supabase
+      // 회원권 히스토리 업데이트 (status 제외, 업데이트 가능한 컬럼만)
+      const historyUpdateData = {
+        remaining_sessions: calculatedRemainingSessions,
+        end_date: editData.expiresAt,
+        total_sessions: editData.totalSessions,
+        used_sessions: editData.usedSessions,
+        updated_at: new Date().toISOString()
+      };
+      
+      logDebug(logCtx, 'membership_history 업데이트 시도', { 
+        table: 'membership_history',
+        id: latestMembership.id,
+        updateData: historyUpdateData
+      });
+      
+      const { data: historyUpdateResult, error: historyError } = await supabase
         .from("membership_history")
-        .update({
-          remaining_sessions: calculatedRemainingSessions, // 자동 계산된 값 사용
-          end_date: editData.expiresAt,
-          total_sessions: editData.totalSessions,
-          used_sessions: editData.usedSessions,
-          status: editData.status, // 상태 필드 추가
-          updated_at: new Date().toISOString()
-        })
-        .eq("id", latestMembership.id);
+        .update(historyUpdateData)
+        .eq("id", latestMembership.id)
+        .select(); // 업데이트 결과 확인
 
-      if (historyError) throw historyError;
+      if (historyError) {
+        logError({ ...logCtx, error: historyError, state: 'history_update_error' });
+        throw new Error(`membership_history 업데이트 실패: ${historyError.message}`);
+      }
 
-      // 회원 정보 업데이트 (잔여횟수 자동 계산 적용)
-      const { error: memberError } = await supabase
+      logDebug(logCtx, 'membership_history 업데이트 성공', { 
+        result: historyUpdateResult,
+        updatedRows: historyUpdateResult?.length || 0
+      });
+
+      // 회원 정보 업데이트
+      const memberUpdateData = {
+        remaining_sessions: calculatedRemainingSessions,
+        expires_at: editData.expiresAt,
+        membership_status: editData.status
+      };
+      
+      logDebug(logCtx, 'member 업데이트 시도', { 
+        table: 'member',
+        id: memberId,
+        updateData: memberUpdateData
+      });
+      
+      const { data: memberUpdateResult, error: memberError } = await supabase
         .from("member")
-        .update({
-          remaining_sessions: calculatedRemainingSessions, // 자동 계산된 값 사용
-          expires_at: editData.expiresAt,
-          membership_status: editData.status
-        })
-        .eq("id", memberId);
+        .update(memberUpdateData)
+        .eq("id", memberId)
+        .select(); // 업데이트 결과 확인
 
-      if (memberError) throw memberError;
+      if (memberError) {
+        logError({ ...logCtx, error: memberError, state: 'member_update_error' });
+        throw new Error(`member 업데이트 실패: ${memberError.message}`);
+      }
+
+      logDebug(logCtx, 'member 업데이트 성공', { 
+        result: memberUpdateResult,
+        updatedRows: memberUpdateResult?.length || 0
+      });
 
       logDebug(logCtx, '데이터베이스 업데이트 완료', { 
-        historyUpdate: { 
-          remaining: calculatedRemainingSessions, 
-          expires: editData.expiresAt,
-          total: editData.totalSessions,
-          used: editData.usedSessions,
-          status: editData.status
-        },
-        memberUpdate: { 
-          remaining: calculatedRemainingSessions, 
-          expires: editData.expiresAt, 
-          status: editData.status 
-        }
+        historyUpdate: historyUpdateData,
+        memberUpdate: memberUpdateData
       });
 
       // 데이터베이스에서 실제 저장된 데이터를 다시 조회하여 로컬 상태 동기화
@@ -265,7 +288,10 @@ export default function MembershipPage() {
         .eq("id", memberId)
         .single();
 
-      if (memberFetchError) throw memberFetchError;
+      if (memberFetchError) {
+        logError({ ...logCtx, error: memberFetchError, state: 'member_fetch_error' });
+        throw new Error(`업데이트된 member 데이터 조회 실패: ${memberFetchError.message}`);
+      }
 
       const { data: updatedHistoryData, error: historyFetchError } = await supabase
         .from("membership_history")
@@ -273,7 +299,10 @@ export default function MembershipPage() {
         .eq("id", latestMembership.id)
         .single();
 
-      if (historyFetchError) throw historyFetchError;
+      if (historyFetchError) {
+        logError({ ...logCtx, error: historyFetchError, state: 'history_fetch_error' });
+        throw new Error(`업데이트된 membership_history 데이터 조회 실패: ${historyFetchError.message}`);
+      }
 
       logDebug(logCtx, '업데이트된 데이터 조회 완료', { 
         updatedMember: updatedMemberData,
@@ -306,7 +335,7 @@ export default function MembershipPage() {
                 end_date: updatedHistoryData.end_date,
                 total_sessions: updatedHistoryData.total_sessions,
                 used_sessions: updatedHistoryData.used_sessions,
-                status: updatedHistoryData.status,
+                status: updatedHistoryData.status, // 기존 status 값 유지
                 updated_at: updatedHistoryData.updated_at
               }
             : history
@@ -339,7 +368,7 @@ export default function MembershipPage() {
     } catch (error) {
       const err = error as Error;
       logError({ ...logCtx, error: err, state: 'error' });
-      alert("회원권 정보 업데이트 중 오류가 발생했습니다.");
+      alert(`회원권 정보 업데이트 중 오류가 발생했습니다: ${err.message}`);
     } finally {
       setSaving(false);
     }
