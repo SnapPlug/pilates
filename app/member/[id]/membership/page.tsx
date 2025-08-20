@@ -17,8 +17,8 @@ type MembershipHistory = {
   total_sessions: number;
   used_sessions: number;
   remaining_sessions: number;
-  status: "활성" | "만료" | "정지" | "취소";
-  membership_status?: "활성" | "만료" | "정지" | "임시"; // 추가: 수정 가능한 상태 필드
+  status: "활성" | "만료" | "정지" | "취소" | "대기";
+  notes?: string;
   created_at: string;
   updated_at: string;
 };
@@ -29,7 +29,7 @@ type Member = {
   gender: "남" | "여" | "기타";
   age: number;
   phone: string;
-  membershipStatus: "활성" | "만료" | "정지" | "임시";
+  membershipStatus: "활성" | "만료" | "정지" | "취소" | "대기";
   registeredAt: string;
   lastVisitAt: string;
   remainingSessions: number;
@@ -44,7 +44,7 @@ type MembershipEditData = {
   expiresAt: string;
   totalSessions: number;
   usedSessions: number;
-  status: "활성" | "만료" | "정지" | "임시";
+  status: "활성" | "만료" | "정지" | "취소" | "대기";
 };
 
 function toDisplayDate(value: string | null | undefined): string {
@@ -62,7 +62,7 @@ function toDisplayDate(value: string | null | undefined): string {
 }
 
 // 회원권 상태를 계산하는 함수
-function calculateMembershipStatus(history: any): "활성" | "만료" | "정지" | "임시" {
+function calculateMembershipStatus(history: any): "활성" | "만료" | "정지" | "취소" | "대기" {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   
@@ -224,7 +224,7 @@ export default function MembershipPage() {
           end_date: editData.expiresAt,
           total_sessions: editData.totalSessions,
           used_sessions: editData.usedSessions,
-          membership_status: editData.status, // 상태 필드 추가
+          status: editData.status, // 상태 필드 추가
           updated_at: new Date().toISOString()
         })
         .eq("id", latestMembership.id);
@@ -306,7 +306,7 @@ export default function MembershipPage() {
                 end_date: updatedHistoryData.end_date,
                 total_sessions: updatedHistoryData.total_sessions,
                 used_sessions: updatedHistoryData.used_sessions,
-                membership_status: updatedHistoryData.membership_status,
+                status: updatedHistoryData.status,
                 updated_at: updatedHistoryData.updated_at
               }
             : history
@@ -318,14 +318,14 @@ export default function MembershipPage() {
             expires: latestMembership.end_date,
             total: latestMembership.total_sessions,
             used: latestMembership.used_sessions,
-            status: latestMembership.membership_status
+            status: latestMembership.status
           },
           new: { 
             remaining: updatedHistoryData.remaining_sessions, 
             expires: updatedHistoryData.end_date,
             total: updatedHistoryData.total_sessions,
             used: updatedHistoryData.used_sessions,
-            status: updatedHistoryData.membership_status
+            status: updatedHistoryData.status
           }
         });
         
@@ -434,8 +434,10 @@ export default function MembershipPage() {
                       <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">활성</span>
                     ) : statusToDisplay === "정지" ? (
                       <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">정지</span>
-                    ) : statusToDisplay === "임시" ? (
-                      <span className="inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700">임시</span>
+                    ) : statusToDisplay === "취소" ? (
+                      <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">취소</span>
+                    ) : statusToDisplay === "대기" ? (
+                      <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">대기</span>
                     ) : (
                       <span className="inline-flex items-center rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700">만료</span>
                     );
@@ -495,8 +497,10 @@ export default function MembershipPage() {
                             <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">활성</span>
                           ) : calculatedStatus === "정지" ? (
                             <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">정지</span>
-                          ) : calculatedStatus === "임시" ? (
-                            <span className="inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700">임시</span>
+                          ) : calculatedStatus === "취소" ? (
+                            <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">취소</span>
+                          ) : calculatedStatus === "대기" ? (
+                            <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">대기</span>
                           ) : (
                             <span className="inline-flex items-center rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700">만료</span>
                           );
@@ -536,13 +540,14 @@ export default function MembershipPage() {
                     value={editData.status}
                     onChange={(e) => setEditData(prev => ({
                       ...prev,
-                      status: e.target.value as "활성" | "만료" | "정지" | "임시"
+                      status: e.target.value as "활성" | "만료" | "정지" | "취소" | "대기"
                     }))}
                   >
                     <option value="활성">활성</option>
                     <option value="정지">정지</option>
                     <option value="만료">만료</option>
-                    <option value="임시">임시</option>
+                    <option value="취소">취소</option>
+                    <option value="대기">대기</option>
                   </select>
                 </div>
 
