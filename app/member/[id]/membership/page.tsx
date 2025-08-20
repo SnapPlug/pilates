@@ -167,8 +167,12 @@ export default function MembershipPage() {
     if (!member || membershipHistory.length === 0) return;
     
     const latestMembership = membershipHistory[0];
+    
+    // 잔여횟수 자동 계산: 총 횟수 - 사용 횟수
+    const calculatedRemainingSessions = latestMembership.total_sessions - latestMembership.used_sessions;
+    
     const newEditData = {
-      remainingSessions: latestMembership.remaining_sessions,
+      remainingSessions: calculatedRemainingSessions, // 자동 계산된 값 사용
       expiresAt: latestMembership.end_date,
       totalSessions: latestMembership.total_sessions,
       usedSessions: latestMembership.used_sessions,
@@ -179,6 +183,7 @@ export default function MembershipPage() {
       latestMembership: {
         id: latestMembership.id,
         remaining: latestMembership.remaining_sessions,
+        calculatedRemaining: calculatedRemainingSessions,
         expires: latestMembership.end_date,
         total: latestMembership.total_sessions,
         used: latestMembership.used_sessions
@@ -194,9 +199,14 @@ export default function MembershipPage() {
     if (!member || membershipHistory.length === 0) return;
 
     const logCtx = createLogContext('MembershipPage', 'updateMembershipData');
+    
+    // 잔여횟수 자동 계산: 총 횟수 - 사용 횟수
+    const calculatedRemainingSessions = editData.totalSessions - editData.usedSessions;
+    
     logDebug(logCtx, '회원권 데이터 업데이트 시작', { 
       memberId, 
       editData,
+      calculatedRemainingSessions,
       latestMembership: membershipHistory[0] 
     });
 
@@ -205,11 +215,11 @@ export default function MembershipPage() {
     try {
       const latestMembership = membershipHistory[0];
       
-      // 회원권 히스토리 업데이트
+      // 회원권 히스토리 업데이트 (잔여횟수 자동 계산 적용)
       const { error: historyError } = await supabase
         .from("membership_history")
         .update({
-          remaining_sessions: editData.remainingSessions,
+          remaining_sessions: calculatedRemainingSessions, // 자동 계산된 값 사용
           end_date: editData.expiresAt,
           total_sessions: editData.totalSessions,
           used_sessions: editData.usedSessions,
@@ -219,11 +229,11 @@ export default function MembershipPage() {
 
       if (historyError) throw historyError;
 
-      // 회원 정보 업데이트
+      // 회원 정보 업데이트 (잔여횟수 자동 계산 적용)
       const { error: memberError } = await supabase
         .from("member")
         .update({
-          remaining_sessions: editData.remainingSessions,
+          remaining_sessions: calculatedRemainingSessions, // 자동 계산된 값 사용
           expires_at: editData.expiresAt,
           membership_status: editData.status
         })
@@ -232,16 +242,25 @@ export default function MembershipPage() {
       if (memberError) throw memberError;
 
       logDebug(logCtx, '데이터베이스 업데이트 완료', { 
-        historyUpdate: { remaining: editData.remainingSessions, expires: editData.expiresAt },
-        memberUpdate: { remaining: editData.remainingSessions, expires: editData.expiresAt, status: editData.status }
+        historyUpdate: { 
+          remaining: calculatedRemainingSessions, 
+          expires: editData.expiresAt,
+          total: editData.totalSessions,
+          used: editData.usedSessions
+        },
+        memberUpdate: { 
+          remaining: calculatedRemainingSessions, 
+          expires: editData.expiresAt, 
+          status: editData.status 
+        }
       });
 
-      // 로컬 상태 즉시 업데이트
+      // 로컬 상태 즉시 업데이트 (잔여횟수 자동 계산 적용)
       setMember(prev => {
         if (!prev) return null;
         const updatedMember = {
           ...prev,
-          remainingSessions: editData.remainingSessions,
+          remainingSessions: calculatedRemainingSessions, // 자동 계산된 값 사용
           expiresAt: toDisplayDate(editData.expiresAt),
           membershipStatus: editData.status
         };
@@ -252,13 +271,13 @@ export default function MembershipPage() {
         return updatedMember;
       });
 
-      // 회원권 히스토리 로컬 상태 업데이트
+      // 회원권 히스토리 로컬 상태 업데이트 (잔여횟수 자동 계산 적용)
       setMembershipHistory(prev => {
         const updatedHistory = prev.map(history => 
           history.id === latestMembership.id 
             ? {
                 ...history,
-                remaining_sessions: editData.remainingSessions,
+                remaining_sessions: calculatedRemainingSessions, // 자동 계산된 값 사용
                 end_date: editData.expiresAt,
                 total_sessions: editData.totalSessions,
                 used_sessions: editData.usedSessions,
@@ -275,7 +294,7 @@ export default function MembershipPage() {
             used: latestMembership.used_sessions
           },
           new: { 
-            remaining: editData.remainingSessions, 
+            remaining: calculatedRemainingSessions, // 자동 계산된 값 사용
             expires: editData.expiresAt,
             total: editData.totalSessions,
             used: editData.usedSessions
