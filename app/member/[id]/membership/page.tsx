@@ -329,19 +329,31 @@ export default function MembershipPage() {
               <div className="flex items-center justify-between">
                 <span className="font-medium">상태:</span>
                 <div className="flex items-center gap-2">
-                  {member.membershipStatus === "활성" ? (
-                    <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">활성</span>
-                  ) : member.membershipStatus === "정지" ? (
-                    <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">정지</span>
-                  ) : member.membershipStatus === "임시" ? (
-                    <span className="inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700">임시</span>
-                  ) : (
-                    <span className="inline-flex items-center rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700">만료</span>
-                  )}
+                  {(() => {
+                    // 가장 최근 회원권을 기준으로 상태 계산
+                    const latestMembership = membershipHistory[0];
+                    const calculatedStatus = latestMembership ? calculateMembershipStatus(latestMembership) : member.membershipStatus;
+                    
+                    return calculatedStatus === "활성" ? (
+                      <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">활성</span>
+                    ) : calculatedStatus === "정지" ? (
+                      <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">정지</span>
+                    ) : calculatedStatus === "임시" ? (
+                      <span className="inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700">임시</span>
+                    ) : (
+                      <span className="inline-flex items-center rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700">만료</span>
+                    );
+                  })()}
                 </div>
               </div>
-              <div><span className="font-medium">잔여횟수:</span> {member.remainingSessions}회</div>
-              <div><span className="font-medium">만료일:</span> {member.expiresAt}</div>
+              <div><span className="font-medium">잔여횟수:</span> {(() => {
+                const latestMembership = membershipHistory[0];
+                return latestMembership ? latestMembership.remaining_sessions : member.remainingSessions;
+              })()}회</div>
+              <div><span className="font-medium">만료일:</span> {(() => {
+                const latestMembership = membershipHistory[0];
+                return latestMembership ? toDisplayDate(latestMembership.end_date) : member.expiresAt;
+              })()}</div>
               <div><span className="font-medium">포인트:</span> {member.points.toLocaleString()}P</div>
               {member.kakaoId && (
                 <div><span className="font-medium">카카오ID:</span> {member.kakaoId}</div>
