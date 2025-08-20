@@ -150,43 +150,6 @@ export default function MembershipPage() {
       } else {
         const history = historyData || [];
         setMembershipHistory(history);
-        
-        // 가장 최근 회원권을 기준으로 회원 상태 업데이트
-        if (history.length > 0) {
-          const latestMembership = history[0]; // 가장 최근 회원권
-          const calculatedStatus = calculateMembershipStatus(latestMembership);
-          
-          // 회원 상태가 계산된 상태와 다르면 업데이트
-          if (mappedMember.membershipStatus !== calculatedStatus) {
-            console.log('회원 상태 자동 업데이트:', {
-              memberId,
-              oldStatus: mappedMember.membershipStatus,
-              newStatus: calculatedStatus,
-              endDate: latestMembership.end_date,
-              remainingSessions: latestMembership.remaining_sessions
-            });
-            
-            // 회원 상태 업데이트
-            const { error: updateError } = await supabase
-              .from("member")
-              .update({ 
-                membership_status: calculatedStatus,
-                remaining_sessions: latestMembership.remaining_sessions,
-                expires_at: latestMembership.end_date
-              })
-              .eq("id", memberId);
-            
-            if (!updateError) {
-              // 로컬 상태도 업데이트
-              setMember(prev => prev ? {
-                ...prev,
-                membershipStatus: calculatedStatus,
-                remainingSessions: latestMembership.remaining_sessions,
-                expiresAt: toDisplayDate(latestMembership.end_date)
-              } : null);
-            }
-          }
-        }
       }
 
       logDebug({ ...logCtx, state: 'success' }, '회원 데이터 조회 완료');
@@ -251,8 +214,29 @@ export default function MembershipPage() {
 
       if (memberError) throw memberError;
 
+      // 로컬 상태 즉시 업데이트
+      setMember(prev => prev ? {
+        ...prev,
+        remainingSessions: editData.remainingSessions,
+        expiresAt: toDisplayDate(editData.expiresAt),
+        membershipStatus: editData.status
+      } : null);
+
+      // 회원권 히스토리 로컬 상태 업데이트
+      setMembershipHistory(prev => prev.map(history => 
+        history.id === latestMembership.id 
+          ? {
+              ...history,
+              remaining_sessions: editData.remainingSessions,
+              end_date: editData.expiresAt,
+              total_sessions: editData.totalSessions,
+              used_sessions: editData.usedSessions,
+              updated_at: new Date().toISOString()
+            }
+          : history
+      ));
+
       setShowEditModal(false);
-      await fetchMemberData();
       alert("회원권 정보가 업데이트되었습니다.");
       
       logDebug({ ...logCtx, state: 'success' }, '회원권 데이터 업데이트 완료');
