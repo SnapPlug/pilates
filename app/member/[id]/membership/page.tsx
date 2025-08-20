@@ -398,15 +398,15 @@ export default function MembershipPage() {
                 <span className="font-medium">상태:</span>
                 <div className="flex items-center gap-2">
                   {(() => {
-                    // 가장 최근 회원권을 기준으로 상태 계산
-                    const latestMembership = membershipHistory[0];
-                    const calculatedStatus = latestMembership ? calculateMembershipStatus(latestMembership) : member.membershipStatus;
+                    // 수정된 상태값을 우선적으로 사용, 없으면 계산된 상태 사용
+                    const statusToDisplay = member.membershipStatus || 
+                      (membershipHistory[0] ? calculateMembershipStatus(membershipHistory[0]) : "만료");
                     
-                    return calculatedStatus === "활성" ? (
+                    return statusToDisplay === "활성" ? (
                       <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">활성</span>
-                    ) : calculatedStatus === "정지" ? (
+                    ) : statusToDisplay === "정지" ? (
                       <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">정지</span>
-                    ) : calculatedStatus === "임시" ? (
+                    ) : statusToDisplay === "임시" ? (
                       <span className="inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700">임시</span>
                     ) : (
                       <span className="inline-flex items-center rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700">만료</span>
