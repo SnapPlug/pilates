@@ -43,6 +43,7 @@ type MembershipEditData = {
   expiresAt: string;
   totalSessions: number;
   usedSessions: number;
+  status: "활성" | "만료" | "정지" | "임시";
 };
 
 function toDisplayDate(value: string | null | undefined): string {
@@ -91,14 +92,13 @@ export default function MembershipPage() {
   const [membershipHistory, setMembershipHistory] = useState<MembershipHistory[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [showStatusModal, setShowStatusModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
-  const [newStatus, setNewStatus] = useState<Member["membershipStatus"]>("활성");
   const [editData, setEditData] = useState<MembershipEditData>({
     remainingSessions: 0,
     expiresAt: "",
     totalSessions: 0,
-    usedSessions: 0
+    usedSessions: 0,
+    status: "활성"
   });
   const [saving, setSaving] = useState(false);
 
@@ -200,32 +200,6 @@ export default function MembershipPage() {
     }
   };
 
-  const updateMembershipStatus = async () => {
-    if (!member) return;
-
-    const logCtx = createLogContext('MembershipPage', 'updateMembershipStatus');
-    logDebug(logCtx, '회원권 상태 업데이트 시작', { memberId, newStatus });
-
-    try {
-      const { error } = await supabase
-        .from("member")
-        .update({ membership_status: newStatus })
-        .eq("id", memberId);
-
-      if (error) throw error;
-
-      setShowStatusModal(false);
-      await fetchMemberData();
-      alert("회원권 상태가 업데이트되었습니다.");
-      
-      logDebug({ ...logCtx, state: 'success' }, '회원권 상태 업데이트 완료');
-    } catch (error) {
-      const err = error as Error;
-      logError({ ...logCtx, error: err, state: 'error' });
-      alert("회원권 상태 업데이트 중 오류가 발생했습니다.");
-    }
-  };
-
   const openEditModal = () => {
     if (!member || membershipHistory.length === 0) return;
     
@@ -234,7 +208,8 @@ export default function MembershipPage() {
       remainingSessions: latestMembership.remaining_sessions,
       expiresAt: latestMembership.end_date,
       totalSessions: latestMembership.total_sessions,
-      usedSessions: latestMembership.used_sessions
+      usedSessions: latestMembership.used_sessions,
+      status: member.membershipStatus
     });
     setShowEditModal(true);
   };
@@ -269,7 +244,8 @@ export default function MembershipPage() {
         .from("member")
         .update({
           remaining_sessions: editData.remainingSessions,
-          expires_at: editData.expiresAt
+          expires_at: editData.expiresAt,
+          membership_status: editData.status
         })
         .eq("id", memberId);
 
@@ -378,16 +354,6 @@ export default function MembershipPage() {
                   ) : (
                     <span className="inline-flex items-center rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700">만료</span>
                   )}
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => {
-                      setNewStatus(member.membershipStatus);
-                      setShowStatusModal(true);
-                    }}
-                  >
-                    변경
-                  </Button>
                 </div>
               </div>
               <div><span className="font-medium">잔여횟수:</span> {member.remainingSessions}회</div>
@@ -455,37 +421,6 @@ export default function MembershipPage() {
           )}
         </div>
 
-        {/* 회원권 상태 변경 모달 */}
-        {showStatusModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
-            <div className="w-full max-w-md rounded-xl border bg-background p-4 shadow-lg max-h-[90vh] overflow-y-auto">
-              <div className="text-sm font-medium mb-4">회원권 상태 변경</div>
-              <div className="space-y-4">
-                <label className="block text-sm">
-                  상태
-                  <select 
-                    className="mt-1 w-full h-9 rounded border bg-background px-2 text-sm" 
-                    value={newStatus} 
-                    onChange={(e) => setNewStatus(e.target.value as Member["membershipStatus"])}
-                  >
-                    <option value="활성">활성</option>
-                    <option value="정지">정지</option>
-                    <option value="만료">만료</option>
-                  </select>
-                </label>
-              </div>
-              <div className="mt-4 flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setShowStatusModal(false)}>
-                  취소
-                </Button>
-                <Button onClick={updateMembershipStatus}>
-                  변경
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* 회원권 정보 수정 모달 */}
         {showEditModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
@@ -502,6 +437,23 @@ export default function MembershipPage() {
               </div>
               
               <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">회원권 상태</label>
+                  <select 
+                    className="w-full h-9 rounded border bg-background px-2 text-sm"
+                    value={editData.status}
+                    onChange={(e) => setEditData(prev => ({
+                      ...prev,
+                      status: e.target.value as "활성" | "만료" | "정지" | "임시"
+                    }))}
+                  >
+                    <option value="활성">활성</option>
+                    <option value="정지">정지</option>
+                    <option value="만료">만료</option>
+                    <option value="임시">임시</option>
+                  </select>
+                </div>
+
                 <div>
                   <label className="block text-sm font-medium mb-2">총 횟수</label>
                   <Input
