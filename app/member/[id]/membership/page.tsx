@@ -18,6 +18,7 @@ type MembershipHistory = {
   used_sessions: number;
   remaining_sessions: number;
   status: "활성" | "만료" | "정지" | "취소";
+  membership_status?: "활성" | "만료" | "정지" | "임시"; // 추가: 수정 가능한 상태 필드
   created_at: string;
   updated_at: string;
 };
@@ -215,7 +216,7 @@ export default function MembershipPage() {
     try {
       const latestMembership = membershipHistory[0];
       
-      // 회원권 히스토리 업데이트 (잔여횟수 자동 계산 적용)
+      // 회원권 히스토리 업데이트 (상태 포함, 잔여횟수 자동 계산 적용)
       const { error: historyError } = await supabase
         .from("membership_history")
         .update({
@@ -223,6 +224,7 @@ export default function MembershipPage() {
           end_date: editData.expiresAt,
           total_sessions: editData.totalSessions,
           used_sessions: editData.usedSessions,
+          membership_status: editData.status, // 상태 필드 추가
           updated_at: new Date().toISOString()
         })
         .eq("id", latestMembership.id);
@@ -246,7 +248,8 @@ export default function MembershipPage() {
           remaining: calculatedRemainingSessions, 
           expires: editData.expiresAt,
           total: editData.totalSessions,
-          used: editData.usedSessions
+          used: editData.usedSessions,
+          status: editData.status
         },
         memberUpdate: { 
           remaining: calculatedRemainingSessions, 
@@ -255,14 +258,36 @@ export default function MembershipPage() {
         }
       });
 
-      // 로컬 상태 즉시 업데이트 (잔여횟수 자동 계산 적용)
+      // 데이터베이스에서 실제 저장된 데이터를 다시 조회하여 로컬 상태 동기화
+      const { data: updatedMemberData, error: memberFetchError } = await supabase
+        .from("member")
+        .select("*")
+        .eq("id", memberId)
+        .single();
+
+      if (memberFetchError) throw memberFetchError;
+
+      const { data: updatedHistoryData, error: historyFetchError } = await supabase
+        .from("membership_history")
+        .select("*")
+        .eq("id", latestMembership.id)
+        .single();
+
+      if (historyFetchError) throw historyFetchError;
+
+      logDebug(logCtx, '업데이트된 데이터 조회 완료', { 
+        updatedMember: updatedMemberData,
+        updatedHistory: updatedHistoryData
+      });
+
+      // 로컬 상태를 실제 데이터베이스 값으로 업데이트
       setMember(prev => {
         if (!prev) return null;
         const updatedMember = {
           ...prev,
-          remainingSessions: calculatedRemainingSessions, // 자동 계산된 값 사용
-          expiresAt: toDisplayDate(editData.expiresAt),
-          membershipStatus: editData.status
+          remainingSessions: updatedMemberData.remaining_sessions,
+          expiresAt: toDisplayDate(updatedMemberData.expires_at),
+          membershipStatus: updatedMemberData.membership_status
         };
         logDebug(logCtx, '회원 로컬 상태 업데이트', { 
           old: { remaining: prev.remainingSessions, expires: prev.expiresAt, status: prev.membershipStatus },
@@ -271,17 +296,18 @@ export default function MembershipPage() {
         return updatedMember;
       });
 
-      // 회원권 히스토리 로컬 상태 업데이트 (잔여횟수 자동 계산 적용)
+      // 회원권 히스토리 로컬 상태를 실제 데이터베이스 값으로 업데이트
       setMembershipHistory(prev => {
         const updatedHistory = prev.map(history => 
           history.id === latestMembership.id 
             ? {
                 ...history,
-                remaining_sessions: calculatedRemainingSessions, // 자동 계산된 값 사용
-                end_date: editData.expiresAt,
-                total_sessions: editData.totalSessions,
-                used_sessions: editData.usedSessions,
-                updated_at: new Date().toISOString()
+                remaining_sessions: updatedHistoryData.remaining_sessions,
+                end_date: updatedHistoryData.end_date,
+                total_sessions: updatedHistoryData.total_sessions,
+                used_sessions: updatedHistoryData.used_sessions,
+                membership_status: updatedHistoryData.membership_status,
+                updated_at: updatedHistoryData.updated_at
               }
             : history
         );
@@ -291,13 +317,15 @@ export default function MembershipPage() {
             remaining: latestMembership.remaining_sessions, 
             expires: latestMembership.end_date,
             total: latestMembership.total_sessions,
-            used: latestMembership.used_sessions
+            used: latestMembership.used_sessions,
+            status: latestMembership.membership_status
           },
           new: { 
-            remaining: calculatedRemainingSessions, // 자동 계산된 값 사용
-            expires: editData.expiresAt,
-            total: editData.totalSessions,
-            used: editData.usedSessions
+            remaining: updatedHistoryData.remaining_sessions, 
+            expires: updatedHistoryData.end_date,
+            total: updatedHistoryData.total_sessions,
+            used: updatedHistoryData.used_sessions,
+            status: updatedHistoryData.membership_status
           }
         });
         
