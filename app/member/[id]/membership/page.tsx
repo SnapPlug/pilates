@@ -4,7 +4,9 @@ import React, { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { ArrowLeft, Edit, Save, X } from "lucide-react";
+import { createLogContext, logDebug, logError } from "@/lib/logger";
 
 type MembershipHistory = {
   id: string;
@@ -34,6 +36,13 @@ type Member = {
   points: number;
   kakaoId?: string;
   isTemp?: boolean;
+};
+
+type MembershipEditData = {
+  remainingSessions: number;
+  expiresAt: string;
+  totalSessions: number;
+  usedSessions: number;
 };
 
 function toDisplayDate(value: string | null | undefined): string {
@@ -83,9 +92,20 @@ export default function MembershipPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showStatusModal, setShowStatusModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [newStatus, setNewStatus] = useState<Member["membershipStatus"]>("활성");
+  const [editData, setEditData] = useState<MembershipEditData>({
+    remainingSessions: 0,
+    expiresAt: "",
+    totalSessions: 0,
+    usedSessions: 0
+  });
+  const [saving, setSaving] = useState(false);
 
   const fetchMemberData = async () => {
+    const logCtx = createLogContext('MembershipPage', 'fetchMemberData');
+    logDebug(logCtx, '회원 데이터 조회 시작', { memberId });
+    
     try {
       setLoading(true);
       setError("");
@@ -169,8 +189,11 @@ export default function MembershipPage() {
         }
       }
 
+      logDebug({ ...logCtx, state: 'success' }, '회원 데이터 조회 완료');
+
     } catch (e: unknown) {
-      console.error("회원 데이터 조회 오류:", e);
+      const error = e as Error;
+      logError({ ...logCtx, error, state: 'error' });
       setError("회원 정보를 불러오지 못했습니다.");
     } finally {
       setLoading(false);
@@ -179,6 +202,9 @@ export default function MembershipPage() {
 
   const updateMembershipStatus = async () => {
     if (!member) return;
+
+    const logCtx = createLogContext('MembershipPage', 'updateMembershipStatus');
+    logDebug(logCtx, '회원권 상태 업데이트 시작', { memberId, newStatus });
 
     try {
       const { error } = await supabase
@@ -191,9 +217,75 @@ export default function MembershipPage() {
       setShowStatusModal(false);
       await fetchMemberData();
       alert("회원권 상태가 업데이트되었습니다.");
+      
+      logDebug({ ...logCtx, state: 'success' }, '회원권 상태 업데이트 완료');
     } catch (error) {
-      console.error("회원권 상태 업데이트 오류:", error);
+      const err = error as Error;
+      logError({ ...logCtx, error: err, state: 'error' });
       alert("회원권 상태 업데이트 중 오류가 발생했습니다.");
+    }
+  };
+
+  const openEditModal = () => {
+    if (!member || membershipHistory.length === 0) return;
+    
+    const latestMembership = membershipHistory[0];
+    setEditData({
+      remainingSessions: latestMembership.remaining_sessions,
+      expiresAt: latestMembership.end_date,
+      totalSessions: latestMembership.total_sessions,
+      usedSessions: latestMembership.used_sessions
+    });
+    setShowEditModal(true);
+  };
+
+  const updateMembershipData = async () => {
+    if (!member || membershipHistory.length === 0) return;
+
+    const logCtx = createLogContext('MembershipPage', 'updateMembershipData');
+    logDebug(logCtx, '회원권 데이터 업데이트 시작', { memberId, editData });
+
+    setSaving(true);
+    
+    try {
+      const latestMembership = membershipHistory[0];
+      
+      // 회원권 히스토리 업데이트
+      const { error: historyError } = await supabase
+        .from("membership_history")
+        .update({
+          remaining_sessions: editData.remainingSessions,
+          end_date: editData.expiresAt,
+          total_sessions: editData.totalSessions,
+          used_sessions: editData.usedSessions,
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", latestMembership.id);
+
+      if (historyError) throw historyError;
+
+      // 회원 정보 업데이트
+      const { error: memberError } = await supabase
+        .from("member")
+        .update({
+          remaining_sessions: editData.remainingSessions,
+          expires_at: editData.expiresAt
+        })
+        .eq("id", memberId);
+
+      if (memberError) throw memberError;
+
+      setShowEditModal(false);
+      await fetchMemberData();
+      alert("회원권 정보가 업데이트되었습니다.");
+      
+      logDebug({ ...logCtx, state: 'success' }, '회원권 데이터 업데이트 완료');
+    } catch (error) {
+      const err = error as Error;
+      logError({ ...logCtx, error: err, state: 'error' });
+      alert("회원권 정보 업데이트 중 오류가 발생했습니다.");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -261,7 +353,18 @@ export default function MembershipPage() {
           </div>
 
           <div className="bg-card border rounded-lg p-3">
-            <h2 className="text-md font-semibold mb-3">회원권 현황</h2>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-md font-semibold">회원권 현황</h2>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={openEditModal}
+                disabled={membershipHistory.length === 0}
+              >
+                <Edit className="h-4 w-4 mr-1" />
+                수정
+              </Button>
+            </div>
             <div className="space-y-2 text-sm">
               <div className="flex items-center justify-between">
                 <span className="font-medium">상태:</span>
@@ -377,6 +480,107 @@ export default function MembershipPage() {
                 </Button>
                 <Button onClick={updateMembershipStatus}>
                   변경
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 회원권 정보 수정 모달 */}
+        {showEditModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
+            <div className="w-full max-w-md rounded-xl border bg-background p-6 shadow-lg max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold">회원권 정보 수정</h3>
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={() => setShowEditModal(false)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">총 횟수</label>
+                  <Input
+                    type="number"
+                    value={editData.totalSessions}
+                    onChange={(e) => setEditData(prev => ({
+                      ...prev,
+                      totalSessions: parseInt(e.target.value) || 0
+                    }))}
+                    min="0"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-2">사용 횟수</label>
+                  <Input
+                    type="number"
+                    value={editData.usedSessions}
+                    onChange={(e) => setEditData(prev => ({
+                      ...prev,
+                      usedSessions: parseInt(e.target.value) || 0
+                    }))}
+                    min="0"
+                    max={editData.totalSessions}
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-2">잔여 횟수</label>
+                  <Input
+                    type="number"
+                    value={editData.remainingSessions}
+                    onChange={(e) => setEditData(prev => ({
+                      ...prev,
+                      remainingSessions: parseInt(e.target.value) || 0
+                    }))}
+                    min="0"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    자동 계산: {editData.totalSessions - editData.usedSessions}회
+                  </p>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-2">만료일</label>
+                  <Input
+                    type="date"
+                    value={editData.expiresAt}
+                    onChange={(e) => setEditData(prev => ({
+                      ...prev,
+                      expiresAt: e.target.value
+                    }))}
+                  />
+                </div>
+              </div>
+              
+              <div className="mt-6 flex justify-end gap-2">
+                <Button 
+                  variant="outline" 
+                  onClick={() => setShowEditModal(false)}
+                  disabled={saving}
+                >
+                  취소
+                </Button>
+                <Button 
+                  onClick={updateMembershipData}
+                  disabled={saving}
+                >
+                  {saving ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                      저장 중...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4 mr-2" />
+                      저장
+                    </>
+                  )}
                 </Button>
               </div>
             </div>
