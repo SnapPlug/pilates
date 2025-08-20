@@ -50,6 +50,29 @@ function toDisplayDate(value: string | null | undefined): string {
   }
 }
 
+// 회원권 상태를 계산하는 함수
+function calculateMembershipStatus(history: any): "활성" | "만료" | "정지" | "임시" {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  const endDate = new Date(history.end_date);
+  endDate.setHours(0, 0, 0, 0);
+  
+  // 기간이 만료되었는지 확인
+  const isExpired = endDate < today;
+  
+  // 횟수가 소진되었는지 확인
+  const isSessionsExhausted = history.remaining_sessions <= 0;
+  
+  // 기간과 횟수 모두 만료된 경우
+  if (isExpired || isSessionsExhausted) {
+    return "만료";
+  }
+  
+  // 그 외의 경우 활성
+  return "활성";
+}
+
 export default function MembershipPage() {
   const params = useParams();
   const router = useRouter();
@@ -105,7 +128,45 @@ export default function MembershipPage() {
         console.warn("회원권 히스토리 조회 실패:", historyError);
         setMembershipHistory([]);
       } else {
-        setMembershipHistory(historyData || []);
+        const history = historyData || [];
+        setMembershipHistory(history);
+        
+        // 가장 최근 회원권을 기준으로 회원 상태 업데이트
+        if (history.length > 0) {
+          const latestMembership = history[0]; // 가장 최근 회원권
+          const calculatedStatus = calculateMembershipStatus(latestMembership);
+          
+          // 회원 상태가 계산된 상태와 다르면 업데이트
+          if (mappedMember.membershipStatus !== calculatedStatus) {
+            console.log('회원 상태 자동 업데이트:', {
+              memberId,
+              oldStatus: mappedMember.membershipStatus,
+              newStatus: calculatedStatus,
+              endDate: latestMembership.end_date,
+              remainingSessions: latestMembership.remaining_sessions
+            });
+            
+            // 회원 상태 업데이트
+            const { error: updateError } = await supabase
+              .from("member")
+              .update({ 
+                membership_status: calculatedStatus,
+                remaining_sessions: latestMembership.remaining_sessions,
+                expires_at: latestMembership.end_date
+              })
+              .eq("id", memberId);
+            
+            if (!updateError) {
+              // 로컬 상태도 업데이트
+              setMember(prev => prev ? {
+                ...prev,
+                membershipStatus: calculatedStatus,
+                remainingSessions: latestMembership.remaining_sessions,
+                expiresAt: toDisplayDate(latestMembership.end_date)
+              } : null);
+            }
+          }
+        }
       }
 
     } catch (e: unknown) {
@@ -267,15 +328,18 @@ export default function MembershipPage() {
                       <td className="px-3 py-3">{history.used_sessions}</td>
                       <td className="px-3 py-3">{history.remaining_sessions}</td>
                       <td className="px-3 py-3">
-                        {history.status === "활성" ? (
-                          <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">활성</span>
-                        ) : history.status === "정지" ? (
-                          <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">정지</span>
-                        ) : history.status === "취소" ? (
-                          <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">취소</span>
-                        ) : (
-                          <span className="inline-flex items-center rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700">만료</span>
-                        )}
+                        {(() => {
+                          const calculatedStatus = calculateMembershipStatus(history);
+                          return calculatedStatus === "활성" ? (
+                            <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">활성</span>
+                          ) : calculatedStatus === "정지" ? (
+                            <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">정지</span>
+                          ) : calculatedStatus === "임시" ? (
+                            <span className="inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700">임시</span>
+                          ) : (
+                            <span className="inline-flex items-center rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700">만료</span>
+                          );
+                        })()}
                       </td>
                       <td className="px-3 py-3">{toDisplayDate(history.created_at)}</td>
                     </tr>

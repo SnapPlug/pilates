@@ -1,12 +1,14 @@
 "use client";
 import React from "react";
 import SidebarLayout from "@/components/dashboard/SidebarLayout";
+import { supabaseClient } from "@/lib/supabaseClient";
 
 type InstructorSummary = {
   instructorId: string;
   instructorName: string;
   classCount: number;
   studentCount: number;
+  averageStudents: number;
 };
 
 export default function ManagementPage() {
@@ -20,21 +22,114 @@ export default function ManagementPage() {
   const [error, setError] = React.useState<string | null>(null);
   const [rows, setRows] = React.useState<InstructorSummary[]>([]);
 
+  // 페이지 로드 시 자동으로 데이터 불러오기
+  React.useEffect(() => {
+    onLoad();
+  }, []);
+
   const onLoad = async () => {
     setLoading(true);
     setError(null);
     try {
-      // TODO: Wire up Supabase aggregation here
-      // Placeholder demo data for basic UI/UX
-      const demo: InstructorSummary[] = [
-        { instructorId: "1", instructorName: "김민수", classCount: 18, studentCount: 42 },
-        { instructorId: "2", instructorName: "이서연", classCount: 15, studentCount: 37 },
-        { instructorId: "3", instructorName: "박지훈", classCount: 12, studentCount: 28 },
-      ];
-      // Simulate latency
-      await new Promise((r) => setTimeout(r, 400));
-      setRows(demo);
+      // 선택된 월의 시작일과 끝일 계산
+      const [year, monthNum] = month.split('-').map(Number);
+      const startDate = new Date(year, monthNum - 1, 1).toISOString().split('T')[0];
+      const endDate = new Date(year, monthNum, 0).toISOString().split('T')[0];
+
+      console.log('월간 정산 데이터 조회:', { month, startDate, endDate });
+
+      // 1. 해당 월의 모든 수업 조회 (강사 정보 포함)
+      const { data: classes, error: classesError } = await supabaseClient
+        .from('class')
+        .select(`
+          id,
+          class_date,
+          class_time,
+          instructor_id,
+          instructor:instructor_id (
+            id,
+            name
+          )
+        `)
+        .gte('class_date', startDate)
+        .lte('class_date', endDate)
+        .order('class_date', { ascending: true });
+
+      if (classesError) {
+        console.error('수업 조회 오류:', classesError);
+        throw new Error('수업 데이터를 불러오는데 실패했습니다.');
+      }
+
+      console.log('조회된 수업 수:', classes?.length || 0);
+
+      // 2. 해당 월의 모든 예약 조회 (출석 상태 포함)
+      const { data: reservations, error: reservationsError } = await supabaseClient
+        .from('reservation')
+        .select(`
+          id,
+          class_id,
+          name,
+          attendance_status
+        `)
+        .gte('created_at', `${startDate}T00:00:00`)
+        .lte('created_at', `${endDate}T23:59:59`);
+
+      if (reservationsError) {
+        console.error('예약 조회 오류:', reservationsError);
+        throw new Error('예약 데이터를 불러오는데 실패했습니다.');
+      }
+
+      console.log('조회된 예약 수:', reservations?.length || 0);
+
+      // 3. 강사별 통계 계산
+      const instructorStats = new Map<string, {
+        instructorId: string;
+        instructorName: string;
+        classCount: number;
+        studentCount: number;
+        totalStudents: number;
+      }>();
+
+      // 수업별로 강사 통계 계산
+      classes?.forEach(classItem => {
+        const instructorId = classItem.instructor_id || 'unknown';
+        const instructorName = (classItem.instructor as any)?.name || '미지정 강사';
+        
+        if (!instructorStats.has(instructorId)) {
+          instructorStats.set(instructorId, {
+            instructorId,
+            instructorName,
+            classCount: 0,
+            studentCount: 0,
+            totalStudents: 0
+          });
+        }
+
+        const stats = instructorStats.get(instructorId)!;
+        stats.classCount++;
+
+        // 해당 수업의 출석한 학생 수 계산
+        const classReservations = reservations?.filter(r => r.class_id === classItem.id) || [];
+        const attendedStudents = classReservations.filter(r => r.attendance_status === 'attended').length;
+        
+        stats.studentCount += attendedStudents;
+        stats.totalStudents += classReservations.length;
+      });
+
+      // 4. 결과 데이터 변환
+      const result: InstructorSummary[] = Array.from(instructorStats.values()).map(stats => ({
+        instructorId: stats.instructorId,
+        instructorName: stats.instructorName,
+        classCount: stats.classCount,
+        studentCount: stats.studentCount,
+        averageStudents: stats.classCount > 0 ? Number((stats.studentCount / stats.classCount).toFixed(1)) : 0
+      }));
+
+      console.log('강사별 통계:', result);
+      setRows(result);
+
     } catch (e) {
+      console.error('월간 정산 데이터 조회 오류:', e);
       setError("데이터를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.");
     } finally {
       setLoading(false);
@@ -93,7 +188,7 @@ export default function ManagementPage() {
                   <td className="px-3 py-2 text-right tabular-nums">{r.classCount}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{r.studentCount}</td>
                   <td className="px-3 py-2 text-right tabular-nums">
-                    {r.classCount ? (r.studentCount / r.classCount).toFixed(1) : "0.0"}
+                    {r.averageStudents.toFixed(1)}
                   </td>
                 </tr>
               ))}

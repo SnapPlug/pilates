@@ -1,270 +1,348 @@
-'use client';
+"use client";
+import React, { useState, useEffect } from "react";
+import SidebarLayout from "@/components/dashboard/SidebarLayout";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Building2, Users, Calendar, TrendingUp, Phone, Mail, MapPin, Bot } from "lucide-react";
+import { getAllCentersStats, getAllActiveCenters } from "@/lib/centerConfig";
+import type { CenterConfig } from "@/types/center-config";
 
-import { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Plus, Edit, Trash2, Save, X } from 'lucide-react';
-import { SidebarLayout } from '@/components/dashboard/SidebarLayout';
-import { getAllActiveCenters, upsertCenterConfig } from '@/lib/centerConfig';
-import type { CenterConfig } from '@/types/center-config';
+type CenterStats = {
+  centerName: string;
+  totalClasses: number;
+  totalMembers: number;
+  totalReservations: number;
+  attendedReservations: number;
+  attendanceRate: number;
+  dateRange?: { start: string; end: string };
+};
 
+/**
+ * 센터별 통계 관리 페이지
+ * 각 센터의 수업, 회원, 예약 통계를 확인할 수 있습니다.
+ */
 export default function CenterManagementPage() {
   const [centers, setCenters] = useState<CenterConfig[]>([]);
+  const [stats, setStats] = useState<CenterStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showCreate, setShowCreate] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [formData, setFormData] = useState({
-    center_name: '',
-    kakao_bot_id: '',
-    kakao_channel_id: '',
-    center_address: '',
-    center_phone: '',
-    center_email: ''
-  });
+  const [selectedPeriod, setSelectedPeriod] = useState<string>('month');
+  const [customDateRange, setCustomDateRange] = useState<{ start: string; end: string } | null>(null);
 
-  // 센터 목록 불러오기
-  const fetchCenters = async () => {
+  // 페이지 로드 시 데이터 조회
+  useEffect(() => {
+    loadData();
+  }, [selectedPeriod, customDateRange]);
+
+  /**
+   * 센터 목록과 통계 데이터를 불러옵니다
+   */
+  const loadData = async () => {
+    const debugId = crypto.randomUUID();
+    console.log(`[DEBUG][debugId=${debugId}] [CenterManagementPage#loadData] state=mounted, period=${selectedPeriod}`);
+    
+    setLoading(true);
+    setError(null);
+    
     try {
-      setLoading(true);
-      const data = await getAllActiveCenters();
-      setCenters(data);
-      setError(null);
+      // 날짜 범위 계산
+      const dateRange = getDateRange();
+      
+      // 센터 목록과 통계 데이터 병렬 조회
+      const [centersData, statsData] = await Promise.all([
+        getAllActiveCenters(),
+        getAllCentersStats(dateRange)
+      ]);
+      
+      console.log(`[DEBUG][debugId=${debugId}] [CenterManagementPage#loadData] state=success, centers=${centersData.length}, stats=${statsData.length}`);
+      
+      setCenters(centersData);
+      setStats(statsData);
     } catch (err) {
-      setError('센터 목록을 불러오는데 실패했습니다.');
-      console.error('센터 목록 조회 오류:', err);
+      const error = err as Error;
+      console.error(`[ERROR][debugId=${debugId}] [CenterManagementPage#loadData] message="${error.message}"`, error);
+      setError("데이터를 불러오는데 실패했습니다. 잠시 후 다시 시도해주세요.");
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchCenters();
-  }, []);
-
-  // 폼 초기화
-  const resetForm = () => {
-    setFormData({
-      center_name: '',
-      kakao_bot_id: '',
-      kakao_channel_id: '',
-      center_address: '',
-      center_phone: '',
-      center_email: ''
-    });
-    setShowCreate(false);
-    setEditingId(null);
-  };
-
-  // 센터 추가/수정
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  /**
+   * 선택된 기간에 따른 날짜 범위를 계산합니다
+   */
+  const getDateRange = (): { start: string; end: string } | undefined => {
+    const now = new Date();
     
-    if (!formData.center_name || !formData.kakao_bot_id) {
-      alert('센터명과 카카오봇 ID는 필수입니다.');
-      return;
-    }
-
-    try {
-      const configData = {
-        ...formData,
-        ...(editingId && { id: editingId })
-      };
-
-      await upsertCenterConfig(configData);
-      await fetchCenters();
-      resetForm();
-      alert(editingId ? '센터가 수정되었습니다.' : '센터가 추가되었습니다.');
-    } catch (err) {
-      console.error('센터 저장 오류:', err);
-      alert('센터 저장에 실패했습니다.');
+    switch (selectedPeriod) {
+      case 'week':
+        const weekStart = new Date(now);
+        weekStart.setDate(now.getDate() - now.getDay());
+        return {
+          start: weekStart.toISOString().split('T')[0],
+          end: now.toISOString().split('T')[0]
+        };
+      case 'month':
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        return {
+          start: monthStart.toISOString().split('T')[0],
+          end: now.toISOString().split('T')[0]
+        };
+      case 'quarter':
+        const quarterStart = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
+        return {
+          start: quarterStart.toISOString().split('T')[0],
+          end: now.toISOString().split('T')[0]
+        };
+      case 'year':
+        const yearStart = new Date(now.getFullYear(), 0, 1);
+        return {
+          start: yearStart.toISOString().split('T')[0],
+          end: now.toISOString().split('T')[0]
+        };
+      case 'custom':
+        return customDateRange || undefined;
+      default:
+        return undefined;
     }
   };
 
-  // 수정 모드 시작
-  const handleEdit = (center: CenterConfig) => {
-    setFormData({
-      center_name: center.center_name,
-      kakao_bot_id: center.kakao_bot_id,
-      kakao_channel_id: center.kakao_channel_id || '',
-      center_address: center.center_address || '',
-      center_phone: center.center_phone || '',
-      center_email: center.center_email || ''
+  /**
+   * 전체 통계를 계산합니다
+   */
+  const getTotalStats = () => {
+    return stats.reduce((acc, stat) => ({
+      totalClasses: acc.totalClasses + stat.totalClasses,
+      totalMembers: acc.totalMembers + stat.totalMembers,
+      totalReservations: acc.totalReservations + stat.totalReservations,
+      attendedReservations: acc.attendedReservations + stat.attendedReservations,
+    }), {
+      totalClasses: 0,
+      totalMembers: 0,
+      totalReservations: 0,
+      attendedReservations: 0,
     });
-    setEditingId(center.id);
-    setShowCreate(true);
   };
+
+  const totalStats = getTotalStats();
+  const overallAttendanceRate = totalStats.totalReservations > 0 
+    ? Math.round((totalStats.attendedReservations / totalStats.totalReservations) * 1000) / 10 
+    : 0;
+
+  if (loading) {
+    return (
+      <SidebarLayout>
+        <div className="flex items-center justify-center h-64">
+          <div className="text-gray-500">센터 통계를 불러오는 중...</div>
+        </div>
+      </SidebarLayout>
+    );
+  }
 
   return (
     <SidebarLayout>
-      <div className="w-full">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold">센터 관리</h1>
-          <Button onClick={() => setShowCreate(true)} className="flex items-center gap-2">
-            <Plus className="h-4 w-4" />
-            센터 추가
-          </Button>
+      <div className="flex flex-col gap-6">
+        {/* 헤더 */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold">센터 관리</h1>
+            <p className="text-gray-600 mt-1">각 센터의 통계와 현황을 확인합니다</p>
+          </div>
+          
+          {/* 기간 선택 */}
+          <div className="flex items-center gap-2">
+            <select
+              value={selectedPeriod}
+              onChange={(e) => setSelectedPeriod(e.target.value)}
+              className="border rounded-md px-3 py-1.5 text-sm"
+            >
+              <option value="week">이번 주</option>
+              <option value="month">이번 달</option>
+              <option value="quarter">이번 분기</option>
+              <option value="year">올해</option>
+              <option value="custom">사용자 지정</option>
+            </select>
+            
+            {selectedPeriod === 'custom' && (
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={customDateRange?.start || ''}
+                  onChange={(e) => setCustomDateRange(prev => ({ ...prev!, start: e.target.value }))}
+                  className="border rounded-md px-2 py-1 text-sm"
+                />
+                <span className="text-gray-500">~</span>
+                <input
+                  type="date"
+                  value={customDateRange?.end || ''}
+                  onChange={(e) => setCustomDateRange(prev => ({ ...prev!, end: e.target.value }))}
+                  className="border rounded-md px-2 py-1 text-sm"
+                />
+              </div>
+            )}
+            
+            <Button onClick={loadData} disabled={loading}>
+              새로고침
+            </Button>
+          </div>
         </div>
 
+        {/* 에러 메시지 */}
         {error && (
-          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+          <div className="bg-red-50 border border-red-200 rounded-md p-4 text-red-700" role="alert">
             {error}
           </div>
         )}
 
-        {/* 센터 추가/수정 폼 */}
-        {showCreate && (
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                {editingId ? '센터 수정' : '센터 추가'}
-                <Button variant="ghost" size="sm" onClick={resetForm}>
-                  <X className="h-4 w-4" />
-                </Button>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="center_name">센터명 *</Label>
-                    <Input
-                      id="center_name"
-                      value={formData.center_name}
-                      onChange={(e) => setFormData({ ...formData, center_name: e.target.value })}
-                      placeholder="예: SnapPilates 강남점"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="kakao_bot_id">카카오봇 ID *</Label>
-                    <Input
-                      id="kakao_bot_id"
-                      value={formData.kakao_bot_id}
-                      onChange={(e) => setFormData({ ...formData, kakao_bot_id: e.target.value })}
-                      placeholder="예: _xkzxiNn"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="kakao_channel_id">카카오채널 ID</Label>
-                    <Input
-                      id="kakao_channel_id"
-                      value={formData.kakao_channel_id}
-                      onChange={(e) => setFormData({ ...formData, kakao_channel_id: e.target.value })}
-                      placeholder="예: _ZeUTxl"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="center_phone">전화번호</Label>
-                    <Input
-                      id="center_phone"
-                      value={formData.center_phone}
-                      onChange={(e) => setFormData({ ...formData, center_phone: e.target.value })}
-                      placeholder="예: 02-1234-5678"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="center_email">이메일</Label>
-                    <Input
-                      id="center_email"
-                      type="email"
-                      value={formData.center_email}
-                      onChange={(e) => setFormData({ ...formData, center_email: e.target.value })}
-                      placeholder="예: gangnam@snappilates.com"
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <Label htmlFor="center_address">주소</Label>
-                    <Input
-                      id="center_address"
-                      value={formData.center_address}
-                      onChange={(e) => setFormData({ ...formData, center_address: e.target.value })}
-                      placeholder="예: 서울시 강남구 테헤란로 123"
-                    />
-                  </div>
-                </div>
-                <div className="flex justify-end gap-2">
-                  <Button type="button" variant="outline" onClick={resetForm}>
-                    취소
-                  </Button>
-                  <Button type="submit" className="flex items-center gap-2">
-                    <Save className="h-4 w-4" />
-                    {editingId ? '수정' : '추가'}
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
-        )}
+        {/* 전체 통계 카드 */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <StatCard
+            title="총 센터 수"
+            value={centers.length}
+            icon={<Building2 className="w-5 h-5" />}
+            color="blue"
+          />
+          <StatCard
+            title="총 수업 수"
+            value={totalStats.totalClasses}
+            icon={<Calendar className="w-5 h-5" />}
+            color="green"
+          />
+          <StatCard
+            title="총 회원 수"
+            value={totalStats.totalMembers}
+            icon={<Users className="w-5 h-5" />}
+            color="purple"
+          />
+          <StatCard
+            title="평균 출석률"
+            value={`${overallAttendanceRate}%`}
+            icon={<TrendingUp className="w-5 h-5" />}
+            color="orange"
+          />
+        </div>
 
-        {/* 센터 목록 */}
-        {loading ? (
-          <div className="text-center py-8">불러오는 중...</div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {centers.map((center) => (
-              <Card key={center.id} className="hover:shadow-md transition-shadow">
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
-                    <span className="text-lg">{center.center_name}</span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleEdit(center)}
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <div>
-                    <span className="text-sm font-medium text-muted-foreground">카카오봇 ID:</span>
-                    <p className="text-sm">{center.kakao_bot_id}</p>
-                  </div>
-                  {center.kakao_channel_id && (
+        {/* 센터별 상세 통계 */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {centers.map((center) => {
+            const centerStats = stats.find(s => s.centerName === center.center_name);
+            
+            return (
+              <Card key={center.id} className="p-6">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center">
+                    <Building2 className="w-6 h-6 text-blue-600 mr-3" />
                     <div>
-                      <span className="text-sm font-medium text-muted-foreground">카카오채널 ID:</span>
-                      <p className="text-sm">{center.kakao_channel_id}</p>
+                      <h3 className="text-lg font-semibold text-gray-900">{center.center_name}</h3>
+                      <p className="text-sm text-gray-500">센터 정보</p>
                     </div>
-                  )}
+                  </div>
+                  <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                    center.is_active 
+                      ? 'bg-green-100 text-green-800' 
+                      : 'bg-gray-100 text-gray-800'
+                  }`}>
+                    {center.is_active ? '활성' : '비활성'}
+                  </span>
+                </div>
+
+                {/* 센터 정보 */}
+                <div className="space-y-2 mb-4 text-sm text-gray-600">
                   {center.center_phone && (
-                    <div>
-                      <span className="text-sm font-medium text-muted-foreground">전화번호:</span>
-                      <p className="text-sm">{center.center_phone}</p>
+                    <div className="flex items-center">
+                      <Phone className="w-4 h-4 mr-2 text-gray-400" />
+                      <span>{center.center_phone}</span>
                     </div>
                   )}
                   {center.center_email && (
-                    <div>
-                      <span className="text-sm font-medium text-muted-foreground">이메일:</span>
-                      <p className="text-sm">{center.center_email}</p>
+                    <div className="flex items-center">
+                      <Mail className="w-4 h-4 mr-2 text-gray-400" />
+                      <span>{center.center_email}</span>
                     </div>
                   )}
                   {center.center_address && (
-                    <div>
-                      <span className="text-sm font-medium text-muted-foreground">주소:</span>
-                      <p className="text-sm">{center.center_address}</p>
+                    <div className="flex items-start">
+                      <MapPin className="w-4 h-4 mr-2 text-gray-400 mt-0.5" />
+                      <span className="text-xs">{center.center_address}</span>
                     </div>
                   )}
-                  <div className="pt-2">
-                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                      활성
-                    </span>
+                  <div className="flex items-center">
+                    <Bot className="w-4 h-4 mr-2 text-gray-400" />
+                    <span className="font-mono text-xs">{center.kakao_bot_id}</span>
                   </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
+                </div>
 
-        {!loading && centers.length === 0 && (
-          <div className="text-center py-8 text-muted-foreground">
-            등록된 센터가 없습니다. 센터를 추가해주세요.
+                {/* 통계 정보 */}
+                {centerStats ? (
+                  <div className="grid grid-cols-2 gap-4 pt-4 border-t">
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-blue-600">{centerStats.totalClasses}</div>
+                      <div className="text-xs text-gray-500">수업 수</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-purple-600">{centerStats.totalMembers}</div>
+                      <div className="text-xs text-gray-500">회원 수</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-green-600">{centerStats.totalReservations}</div>
+                      <div className="text-xs text-gray-500">예약 수</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-orange-600">{centerStats.attendanceRate}%</div>
+                      <div className="text-xs text-gray-500">출석률</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="pt-4 border-t text-center text-gray-500 text-sm">
+                    통계 데이터가 없습니다
+                  </div>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+
+        {/* 빈 상태 */}
+        {centers.length === 0 && (
+          <div className="text-center py-12">
+            <Building2 className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">등록된 센터가 없습니다</h3>
+            <p className="text-gray-600 mb-4">설정 페이지에서 센터를 추가해주세요.</p>
+            <Button onClick={() => window.location.href = '/settings'}>
+              설정 페이지로 이동
+            </Button>
           </div>
         )}
       </div>
     </SidebarLayout>
+  );
+}
+
+type StatCardProps = {
+  title: string;
+  value: number | string;
+  icon: React.ReactNode;
+  color: 'blue' | 'green' | 'purple' | 'orange';
+};
+
+function StatCard({ title, value, icon, color }: StatCardProps) {
+  const colorClasses = {
+    blue: 'bg-blue-50 text-blue-600',
+    green: 'bg-green-50 text-green-600',
+    purple: 'bg-purple-50 text-purple-600',
+    orange: 'bg-orange-50 text-orange-600',
+  };
+
+  return (
+    <Card className="p-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm text-gray-600">{title}</p>
+          <p className="text-2xl font-bold text-gray-900">{value}</p>
+        </div>
+        <div className={`p-2 rounded-lg ${colorClasses[color]}`}>
+          {icon}
+        </div>
+      </div>
+    </Card>
   );
 }

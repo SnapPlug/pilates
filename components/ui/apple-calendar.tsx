@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
+import { AttendanceModal } from "./attendance-modal";
 
 type AppleCalendarProps = {
   className?: string;
@@ -36,7 +37,7 @@ export const AppleCalendar: React.FC<AppleCalendarProps> = ({ className, onAdd }
     instructorId?: string | null;
     members: string[]; // legacy demo field
     reservedCount?: number; // from reservation table
-    reservations?: { id: string; name: string; attendance?: "present" | "absent" | null }[]; // from reservation table
+    reservations?: { id: string; name: string }[]; // from reservation table
   };
   type Instructor = { id: string; name: string };
   const [currentDate, setCurrentDate] = React.useState<Date>(new Date());
@@ -47,13 +48,14 @@ export const AppleCalendar: React.FC<AppleCalendarProps> = ({ className, onAdd }
   const [showHourMenu, setShowHourMenu] = React.useState<boolean>(false);
   const [showWeekdayMenu, setShowWeekdayMenu] = React.useState<boolean>(false);
   const [demoClasses, setDemoClasses] = React.useState<DemoClass[]>([]);
-  const [activeAttendance, setActiveAttendance] = React.useState<{ reservationId: string; name: string } | null>(null);
   const [instructors, setInstructors] = React.useState<Instructor[]>([]);
-  const instructorById = React.useMemo(() => {
-    const map: Record<string, string> = {};
-    instructors.forEach((i) => { map[i.id] = i.name; });
-    return map;
-  }, [instructors]);
+  // 강사 이름을 찾는 헬퍼 함수
+  const getInstructorName = (instructorId: string | null): string => {
+    if (!instructorId) return "미지정";
+    const instructor = instructors.find(i => i.id === instructorId);
+    return instructor ? instructor.name : "미지정";
+  };
+  
   const [activeInstructorEdit, setActiveInstructorEdit] = React.useState<{ classId: string } | null>(null);
   const [selectedInstructorId, setSelectedInstructorId] = React.useState<string>("");
   const [showAddClassModal, setShowAddClassModal] = React.useState<boolean>(false);
@@ -65,6 +67,14 @@ export const AppleCalendar: React.FC<AppleCalendarProps> = ({ className, onAdd }
     instructorId: "",
     notes: ""
   });
+  
+  // 출석 체크 관련 상태
+  const [showAttendanceModal, setShowAttendanceModal] = React.useState<boolean>(false);
+  const [selectedClassReservations, setSelectedClassReservations] = React.useState<Array<{
+    id: string;
+    name: string;
+    attendance_status: string;
+  }>>([]);
 
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
@@ -91,6 +101,147 @@ export const AppleCalendar: React.FC<AppleCalendarProps> = ({ className, onAdd }
   };
 
   const weekdayLabels = ["일", "월", "화", "수", "목", "금", "토"];
+
+    // 데이터 로딩 함수
+  const loadDb = async () => {
+    try {
+      // 1. 먼저 강사 데이터 로드
+      const { data: instructorData, error: instructorError } = await supabase
+        .from("instructor")
+        .select("id, name")
+        .order("name", { ascending: true });
+      
+      if (!instructorError && instructorData) {
+        const instructors: Instructor[] = instructorData.map((row: { id: string; name: string }) => ({
+          id: row.id,
+          name: row.name
+        }));
+        setInstructors(instructors);
+        
+        // 강사 ID를 이름으로 매핑하는 객체 생성
+        const instructorMap: Record<string, string> = {};
+        instructors.forEach(instructor => {
+          instructorMap[instructor.id] = instructor.name;
+        });
+        
+        // 2. 수업 데이터 로드 (강사 데이터 로드 후)
+        const { data, error } = await supabase
+          .from("class")
+          .select("id,class_date,class_time,capacity,instructor_id");
+        if (!error && data) {
+          type ClassRowFromDb = { id: string; class_date: string | Date; class_time: string; capacity: number; instructor_id?: string | null };
+          const mapped: DemoClass[] = (data as ClassRowFromDb[]).map((row) => ({
+            id: row.id,
+            date: String(row.class_date),
+            time: String(row.class_time).slice(0, 5),
+            capacity: Number(row.capacity ?? 0),
+            instructorName: row.instructor_id ? (instructorMap[row.instructor_id] || "미지정") : "미지정",
+            instructorId: row.instructor_id ?? null,
+            members: [],
+            reservedCount: 0,
+            reservations: [],
+          }));
+          // DB 데이터만 사용 (로컬 데모 데이터와 병합하지 않음)
+          setDemoClasses(mapped);
+          // reservations: count and names per class
+          try {
+            const ids = (data as { id: string }[]).map((r) => r.id);
+            if (ids.length > 0) {
+              const { data: resv, error: resvErr } = await supabase
+                .from("reservation")
+                .select("id,class_id,name,attendance_status").in("class_id", ids as string[]);
+              if (!resvErr && resv) {
+                const counts: Record<string, number> = {};
+                const byClass: Record<string, { id: string; name: string; attendance_status?: string }[]> = {};
+                (resv as { id: string; class_id: string; name: string; attendance_status?: string }[]).forEach((r) => {
+                  counts[r.class_id] = (counts[r.class_id] ?? 0) + 1;
+                  if (!byClass[r.class_id]) byClass[r.class_id] = [];
+                  byClass[r.class_id].push({ 
+                    id: r.id, 
+                    name: (r.name || "").trim(),
+                    attendance_status: r.attendance_status || 'pending'
+                  });
+                });
+                setDemoClasses((prev) => prev.map((c) => ({
+                  ...c,
+                  reservedCount: c.id && counts[c.id] ? counts[c.id] : (c.reservedCount ?? 0),
+                  reservations: c.id && byClass[c.id] ? byClass[c.id] : [],
+                })));
+              }
+            }
+          } catch {}
+        }
+      }
+    } catch (error) {
+      console.error('데이터 로딩 오류:', error);
+    }
+  };
+
+  // 출석 체크 함수들
+  const handleAttendanceCheck = async (classId: string) => {
+    try {
+      // 해당 수업의 예약 정보 조회 (attendance_status 포함)
+      const { data: reservations, error } = await supabase
+        .from('reservation')
+        .select('id, name, attendance_status')
+        .eq('class_id', classId);
+
+      console.log('출석 체크 - 예약 데이터 조회:', { classId, reservations, error });
+
+      if (error) {
+        console.error('예약 조회 오류:', error);
+        alert('예약 정보를 불러오는데 실패했습니다.');
+        return;
+      }
+
+      setSelectedClassReservations(reservations || []);
+      setShowAttendanceModal(true);
+    } catch (error) {
+      console.error('출석 체크 오류:', error);
+      alert('출석 체크를 불러오는데 실패했습니다.');
+    }
+  };
+
+  const handleAttendanceUpdate = async (reservationId: string, status: string) => {
+    try {
+      const response = await fetch('/api/attendance/update', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          reservation_id: reservationId,
+          attendance_status: status,
+          checked_by: 'admin'
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        console.log('출석 상태 업데이트 성공:', result.data);
+        
+        // 성공 시 예약 목록 새로고침
+        const updatedReservations = selectedClassReservations.map(reservation => 
+          reservation.id === reservationId 
+            ? { ...reservation, attendance_status: status }
+            : reservation
+        );
+        setSelectedClassReservations(updatedReservations);
+        
+        // 캘린더 데이터 새로고침
+        await loadDb();
+        
+        // 성공 메시지 표시
+        alert('출석 상태가 업데이트되었습니다.');
+      } else {
+        throw new Error(result.error || '출석 상태 업데이트에 실패했습니다.');
+      }
+    } catch (error) {
+      console.error('출석 업데이트 오류:', error);
+      throw error;
+    }
+  };
 
   // 수업 추가 함수
   const handleAddClass = async () => {
@@ -219,73 +370,7 @@ export const AppleCalendar: React.FC<AppleCalendarProps> = ({ className, onAdd }
       }));
     };
     load();
-    // Load instructors list from Supabase
-    const loadInstructors = async () => {
-      try {
-        const { data, error } = await supabase
-          .from("instructor")
-          .select("id, name")
-          .order("name", { ascending: true });
-        
-        if (!error && data) {
-          const instructorData: Instructor[] = data.map((row: { id: string; name: string }) => ({
-            id: row.id,
-            name: row.name
-          }));
-          setInstructors(instructorData);
-        }
-      } catch (error) {
-        console.error("강사 목록 로딩 오류:", error);
-      }
-    };
-    loadInstructors();
-    // DB 데이터 로딩 (Supabase)
-  const loadDb = async () => {
-      try {
-        const { data, error } = await supabase
-          .from("class")
-          .select("id,class_date,class_time,capacity,instructor_id");
-        if (!error && data) {
-          type ClassRowFromDb = { id: string; class_date: string | Date; class_time: string; capacity: number; instructor_id?: string | null };
-          const mapped: DemoClass[] = (data as ClassRowFromDb[]).map((row) => ({
-            id: row.id,
-            date: String(row.class_date),
-            time: String(row.class_time).slice(0, 5),
-            capacity: Number(row.capacity ?? 0),
-            instructorName: row.instructor_id ? (instructorById[row.instructor_id] || "") : "",
-            instructorId: row.instructor_id ?? null,
-            members: [],
-            reservedCount: 0,
-            reservations: [],
-          }));
-          // DB 데이터만 사용 (로컬 데모 데이터와 병합하지 않음)
-          setDemoClasses(mapped);
-          // reservations: count and names per class
-          try {
-            const ids = (data as { id: string }[]).map((r) => r.id);
-            if (ids.length > 0) {
-              const { data: resv, error: resvErr } = await supabase
-                .from("reservation")
-                .select("id,class_id,name").in("class_id", ids as string[]);
-              if (!resvErr && resv) {
-                const counts: Record<string, number> = {};
-                const byClass: Record<string, { id: string; name: string; attendance?: "present" | "absent" | null }[]> = {};
-                (resv as { id: string; class_id: string; name: string }[]).forEach((r) => {
-                  counts[r.class_id] = (counts[r.class_id] ?? 0) + 1;
-                  if (!byClass[r.class_id]) byClass[r.class_id] = [];
-                  byClass[r.class_id].push({ id: r.id, name: (r.name || "").trim(), attendance: null });
-                });
-                setDemoClasses((prev) => prev.map((c) => ({
-                  ...c,
-                  reservedCount: c.id && counts[c.id] ? counts[c.id] : (c.reservedCount ?? 0),
-                  reservations: c.id && byClass[c.id] ? byClass[c.id] : [],
-                })));
-              }
-            }
-          } catch {}
-        }
-      } catch {}
-    };
+    // 초기 데이터 로딩 (강사 데이터 포함)
     loadDb();
     const onFocus = () => {
       load();
@@ -309,7 +394,7 @@ export const AppleCalendar: React.FC<AppleCalendarProps> = ({ className, onAdd }
             date: String(row.class_date),
             time: String(row.class_time).slice(0, 5),
             capacity: Number(row.capacity ?? 0),
-            instructorName: row.instructor_id ? (instructorById[row.instructor_id] || "") : "",
+            instructorName: row.instructor_id ? (getInstructorName(row.instructor_id)) : "미지정",
             instructorId: row.instructor_id ?? null,
             members: [],
             reservedCount: 0,
@@ -349,7 +434,7 @@ export const AppleCalendar: React.FC<AppleCalendarProps> = ({ className, onAdd }
     if (instructors.length === 0) return;
     setDemoClasses((prev) => prev.map((c) => ({
       ...c,
-      instructorName: c.instructorId ? (instructorById[c.instructorId] || c.instructorName) : c.instructorName,
+      instructorName: c.instructorId ? getInstructorName(c.instructorId) : c.instructorName,
     })));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [instructors]);
@@ -752,16 +837,29 @@ export const AppleCalendar: React.FC<AppleCalendarProps> = ({ className, onAdd }
                               >
                                 {c.instructorName || "강사 미지정"}
                               </div>
-                              <span>({typeof c.reservedCount==='number'?c.reservedCount:0}/{c.capacity})</span>
+                              <div className="flex items-center gap-2">
+                                <span>({typeof c.reservedCount==='number'?c.reservedCount:0}/{c.capacity})</span>
+                                {c.id && (c.reservedCount || 0) > 0 && (
+                                  <button
+                                    onClick={(e) => { 
+                                      e.stopPropagation(); 
+                                      handleAttendanceCheck(c.id!); 
+                                    }}
+                                    className="px-2 py-1 text-xs bg-white/20 hover:bg-white/30 rounded text-white"
+                                    title="출석 체크"
+                                  >
+                                    출석
+                                  </button>
+                                )}
+                              </div>
                             </div>
                             <div className="mt-2 grid grid-cols-3 gap-2"
                             >
                               {(c.reservations ?? []).map((rsv, i) => (
                                 <span
                                   key={`${rsv.id}-${i}`}
-                                  className="inline-flex w-full items-center justify-center rounded-full bg-white/90 px-2 py-1 text-[11px] text-sky-700 cursor-pointer truncate"
-                                  onClick={() => setActiveAttendance({ reservationId: rsv.id, name: rsv.name })}
-                                  title="출석/결석 표시"
+                                  className="inline-flex w-full items-center justify-center rounded-full bg-white/90 px-2 py-1 text-[11px] text-sky-700 truncate"
+                                  title="예약자"
                                 >
                                   {rsv.name || "이름없음"}
                                 </span>
@@ -779,52 +877,14 @@ export const AppleCalendar: React.FC<AppleCalendarProps> = ({ className, onAdd }
         </>
       )}
 
-      {activeAttendance && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
-          <div className="w-full max-w-sm rounded-xl border bg-background p-4 shadow-lg">
-            <div className="text-sm">출석 체크</div>
-            <div className="mt-1 text-base font-semibold">{activeAttendance.name}</div>
-            <div className="mt-4 flex items-center gap-2">
-              <Button
-                size="sm"
-                onClick={async () => {
-                  const id = activeAttendance.reservationId;
-                  try {
-                    await supabase.from("reservation").update({ attendance: "present" }).eq("id", id);
-                    setDemoClasses((prev) => prev.map((c) => ({
-                      ...c,
-                      reservations: (c.reservations || []).map((r) => r.id === id ? { ...r, attendance: "present" } : r),
-                    })));
-                  } catch {}
-                  setActiveAttendance(null);
-                }}
-              >
-                출석
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={async () => {
-                  const id = activeAttendance.reservationId;
-                  try {
-                    await supabase.from("reservation").update({ attendance: "absent" }).eq("id", id);
-                    setDemoClasses((prev) => prev.map((c) => ({
-                      ...c,
-                      reservations: (c.reservations || []).map((r) => r.id === id ? { ...r, attendance: "absent" } : r),
-                    })));
-                  } catch {}
-                  setActiveAttendance(null);
-                }}
-              >
-                결석
-              </Button>
-              <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setActiveAttendance(null)}>
-                닫기
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+
+
+      <AttendanceModal
+        isOpen={showAttendanceModal}
+        onClose={() => setShowAttendanceModal(false)}
+        reservations={selectedClassReservations}
+        onAttendanceUpdate={handleAttendanceUpdate}
+      />
 
       {activeInstructorEdit && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
@@ -851,7 +911,7 @@ export const AppleCalendar: React.FC<AppleCalendarProps> = ({ className, onAdd }
                   try {
                     await supabase.from("class").update({ instructor_id: selectedInstructorId || null }).eq("id", clsId);
                     setDemoClasses((prev) => prev.map((c) => (
-                      c.id === clsId ? { ...c, instructorId: selectedInstructorId || null, instructorName: selectedInstructorId ? (instructorById[selectedInstructorId] || "") : "" } : c
+                      c.id === clsId ? { ...c, instructorId: selectedInstructorId || null, instructorName: selectedInstructorId ? getInstructorName(selectedInstructorId) : "미지정" } : c
                     )));
                   } catch {}
                   setActiveInstructorEdit(null);

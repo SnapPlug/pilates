@@ -128,6 +128,8 @@ export const Calendar: React.FC<MiniCalendarProps> = ({ onSelect, dayStatus }) =
         {days.map((day) => {
           const isSelected =
             format(day, "yyyy-MM-dd") === format(selectedDate, "yyyy-MM-dd");
+          const isToday = format(day, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd");
+          const isPast = day < new Date(new Date().setHours(0, 0, 0, 0));
           const status = dayStatus ? dayStatus(day) : "none";
 
           return (
@@ -135,11 +137,12 @@ export const Calendar: React.FC<MiniCalendarProps> = ({ onSelect, dayStatus }) =
               key={day.toString()}
               variant={isSelected ? "default" : "ghost"}
               className={cn(
-                "h-9 w-9 p-0 font-normal",
+                "h-9 w-9 p-0 font-normal relative",
                 view === "month" && !isSameMonth(day, currentDate)
                   ? "opacity-50"
                   : "",
-                isSelected && "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground"
+                isSelected && "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground",
+                isToday && !isSelected && "ring-1 ring-blue-500"
               )}
               onClick={() => {
                 setSelectedDate(day);
@@ -153,8 +156,8 @@ export const Calendar: React.FC<MiniCalendarProps> = ({ onSelect, dayStatus }) =
               <span
                 className={cn(
                   "ml-1 inline-block h-1.5 w-1.5 rounded-full",
-                  status === "available" && "bg-emerald-500",
-                  status === "full" && "bg-rose-500",
+                  status === "available" && (isPast ? "bg-emerald-500/30" : "bg-emerald-500"),
+                  status === "full" && (isPast ? "bg-rose-500/30" : "bg-rose-500"),
                   status === "none" && "bg-transparent"
                 )}
               />

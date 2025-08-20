@@ -43,6 +43,7 @@ type ClassRow = {
   class_time: string; // HH:MM:SS or HH:MM
   capacity: number;
   member_name?: string | null; // 예약자명(개발용, 콤마구분 가능성)
+  isPastClass?: boolean; // 과거 수업 여부
 };
 
 type ReservationRow = {
@@ -343,8 +344,23 @@ function ReservationInner() {
   const slotsForSelectedDate = useMemo(() => {
     if (!selectedDate) return [] as ClassRow[];
     const key = format(selectedDate, "yyyy-MM-dd");
+    const now = new Date();
+    const today = format(now, "yyyy-MM-dd");
+    const currentTime = format(now, "HH:mm");
+    
     return classes
       .filter((c) => c.class_date === key)
+      .map((c) => {
+        // 과거 수업인지 확인
+        const isPastClass = 
+          c.class_date < today || 
+          (c.class_date === today && c.class_time <= currentTime);
+        
+        return {
+          ...c,
+          isPastClass
+        };
+      })
       .sort((a, b) => a.class_time.localeCompare(b.class_time));
   }, [classes, selectedDate]);
 
@@ -711,19 +727,29 @@ function ReservationInner() {
               {slotsForSelectedDate.map((row) => {
                 const reserved = getReservedCount(row);
                 const isFull = reserved >= row.capacity;
+                const isPastClass = row.isPastClass || false;
+                const isDisabled = isFull || isPastClass;
+                
                 return (
-                  <div key={row.id} className="flex items-center justify-between rounded border p-3">
+                  <div key={row.id} className={`flex items-center justify-between rounded border p-3 ${
+                    isPastClass ? 'opacity-50 bg-gray-50' : ''
+                  }`}>
                     <div>
                       <div className="text-sm font-medium">{row.class_time}</div>
                       <div className="text-xs text-muted-foreground">
                         예약 {reserved}/{row.capacity}
+                        {isPastClass && <span className="text-red-500 ml-2">(지난 수업)</span>}
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-2">
-                      <Button disabled={isFull} onClick={() => handleReserve(row)}>
-                        {isFull ? "마감" : "예약"}
+                      <Button 
+                        disabled={isDisabled} 
+                        onClick={() => handleReserve(row)}
+                        className={isPastClass ? 'bg-gray-300 text-gray-500' : ''}
+                      >
+                        {isPastClass ? "지난 수업" : isFull ? "마감" : "예약"}
                       </Button>
-                      {activeClassId === row.id && !isFull && (
+                      {activeClassId === row.id && !isDisabled && (
                         <div className="mt-2 w-full max-w-xs">
                           <div className="flex flex-col gap-2">
                             <input

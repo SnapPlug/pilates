@@ -3,8 +3,9 @@ import SidebarLayout from "@/components/dashboard/SidebarLayout";
 import React, { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
-import { Plus, Link, Link2Off } from "lucide-react";
+import { Plus, Link, Link2Off, CreditCard } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { MembershipModal } from "@/components/ui/membership-modal";
 
 type Member = {
   id: string;
@@ -77,6 +78,8 @@ export default function Page() {
     phone: string;
     kakaoLink: string;
   } | null>(null);
+  const [showMembershipModal, setShowMembershipModal] = useState(false);
+  const [selectedMemberForMembership, setSelectedMemberForMembership] = useState<Member | null>(null);
 
   const fetchMembers = React.useCallback(async () => {
       try {
@@ -182,6 +185,11 @@ export default function Page() {
     setShowTempMemberModal(true);
   };
 
+  const handleMembershipRegistration = (member: Member) => {
+    setSelectedMemberForMembership(member);
+    setShowMembershipModal(true);
+  };
+
   const handleTempMemberUpdate = async () => {
     if (!selectedTempMember) return;
 
@@ -221,6 +229,8 @@ export default function Page() {
 
   // 카카오챗봇 링크 생성
   const generateKakaoLink = async (memberId: string, memberName: string, memberPhone: string) => {
+    console.log('generateKakaoLink 시작:', { memberId, memberName, memberPhone });
+    console.log('환경변수 NEXT_PUBLIC_KAKAO_BOT_ID:', process.env.NEXT_PUBLIC_KAKAO_BOT_ID);
     try {
       const response = await fetch(`/api/member/kakao-link?member_id=${memberId}`);
       const result = await response.json();
@@ -234,6 +244,8 @@ export default function Page() {
       console.error('카카오 링크 생성 오류:', error);
       // 기본 링크 생성
       const kakaoBotId = process.env.NEXT_PUBLIC_KAKAO_BOT_ID || 'YOUR_BOT_ID';
+      console.log('카카오 봇 ID:', kakaoBotId);
+      console.log('환경변수 확인:', process.env.NEXT_PUBLIC_KAKAO_BOT_ID);
       return `https://pf.kakao.com/${kakaoBotId}/chat?member_id=${memberId}`;
     }
   };
@@ -374,6 +386,14 @@ export default function Page() {
                         onClick={() => handleMembershipStatusClick(m)}
                       >
                         상세보기
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleMembershipRegistration(m)}
+                        title="회원권 등록"
+                      >
+                        <CreditCard className="w-4 h-4" />
                       </Button>
                       <Button
                         variant="outline"
@@ -700,6 +720,20 @@ export default function Page() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* 회원권 등록 모달 */}
+        {selectedMemberForMembership && (
+          <MembershipModal
+            isOpen={showMembershipModal}
+            onClose={() => {
+              setShowMembershipModal(false);
+              setSelectedMemberForMembership(null);
+            }}
+            memberId={selectedMemberForMembership.id}
+            memberName={selectedMemberForMembership.name}
+            onSuccess={fetchMembers}
+          />
         )}
       </div>
     </SidebarLayout>
