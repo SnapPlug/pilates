@@ -167,13 +167,26 @@ export default function MembershipPage() {
     if (!member || membershipHistory.length === 0) return;
     
     const latestMembership = membershipHistory[0];
-    setEditData({
+    const newEditData = {
       remainingSessions: latestMembership.remaining_sessions,
       expiresAt: latestMembership.end_date,
       totalSessions: latestMembership.total_sessions,
       usedSessions: latestMembership.used_sessions,
       status: member.membershipStatus
+    };
+    
+    logDebug(createLogContext('MembershipPage', 'openEditModal'), '수정 모달 열기', { 
+      latestMembership: {
+        id: latestMembership.id,
+        remaining: latestMembership.remaining_sessions,
+        expires: latestMembership.end_date,
+        total: latestMembership.total_sessions,
+        used: latestMembership.used_sessions
+      },
+      editData: newEditData
     });
+    
+    setEditData(newEditData);
     setShowEditModal(true);
   };
 
@@ -181,7 +194,11 @@ export default function MembershipPage() {
     if (!member || membershipHistory.length === 0) return;
 
     const logCtx = createLogContext('MembershipPage', 'updateMembershipData');
-    logDebug(logCtx, '회원권 데이터 업데이트 시작', { memberId, editData });
+    logDebug(logCtx, '회원권 데이터 업데이트 시작', { 
+      memberId, 
+      editData,
+      latestMembership: membershipHistory[0] 
+    });
 
     setSaving(true);
     
@@ -214,27 +231,59 @@ export default function MembershipPage() {
 
       if (memberError) throw memberError;
 
+      logDebug(logCtx, '데이터베이스 업데이트 완료', { 
+        historyUpdate: { remaining: editData.remainingSessions, expires: editData.expiresAt },
+        memberUpdate: { remaining: editData.remainingSessions, expires: editData.expiresAt, status: editData.status }
+      });
+
       // 로컬 상태 즉시 업데이트
-      setMember(prev => prev ? {
-        ...prev,
-        remainingSessions: editData.remainingSessions,
-        expiresAt: toDisplayDate(editData.expiresAt),
-        membershipStatus: editData.status
-      } : null);
+      setMember(prev => {
+        if (!prev) return null;
+        const updatedMember = {
+          ...prev,
+          remainingSessions: editData.remainingSessions,
+          expiresAt: toDisplayDate(editData.expiresAt),
+          membershipStatus: editData.status
+        };
+        logDebug(logCtx, '회원 로컬 상태 업데이트', { 
+          old: { remaining: prev.remainingSessions, expires: prev.expiresAt, status: prev.membershipStatus },
+          new: { remaining: updatedMember.remainingSessions, expires: updatedMember.expiresAt, status: updatedMember.membershipStatus }
+        });
+        return updatedMember;
+      });
 
       // 회원권 히스토리 로컬 상태 업데이트
-      setMembershipHistory(prev => prev.map(history => 
-        history.id === latestMembership.id 
-          ? {
-              ...history,
-              remaining_sessions: editData.remainingSessions,
-              end_date: editData.expiresAt,
-              total_sessions: editData.totalSessions,
-              used_sessions: editData.usedSessions,
-              updated_at: new Date().toISOString()
-            }
-          : history
-      ));
+      setMembershipHistory(prev => {
+        const updatedHistory = prev.map(history => 
+          history.id === latestMembership.id 
+            ? {
+                ...history,
+                remaining_sessions: editData.remainingSessions,
+                end_date: editData.expiresAt,
+                total_sessions: editData.totalSessions,
+                used_sessions: editData.usedSessions,
+                updated_at: new Date().toISOString()
+              }
+            : history
+        );
+        
+        logDebug(logCtx, '회원권 히스토리 로컬 상태 업데이트', { 
+          old: { 
+            remaining: latestMembership.remaining_sessions, 
+            expires: latestMembership.end_date,
+            total: latestMembership.total_sessions,
+            used: latestMembership.used_sessions
+          },
+          new: { 
+            remaining: editData.remainingSessions, 
+            expires: editData.expiresAt,
+            total: editData.totalSessions,
+            used: editData.usedSessions
+          }
+        });
+        
+        return updatedHistory;
+      });
 
       setShowEditModal(false);
       alert("회원권 정보가 업데이트되었습니다.");
