@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const member = data?.[0];
+    const member = (data as any)?.[0];
 
     if (!member || !member.member_id) {
       return NextResponse.json({

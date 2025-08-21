@@ -170,7 +170,7 @@ async function handleAuthentication(params: {
     const { error: updateError } = await supabase
       .from('member')
       .update({ kakao_id: kakao_user_id })
-      .eq('id', member.id);
+      .eq('id', member.id as string);
 
     if (updateError) {
       return NextResponse.json(
@@ -220,7 +220,7 @@ async function handleGetMembershipInfo(kakao_user_id: string) {
   const { data: membershipHistory } = await supabase
     .from('membership_history')
     .select('*')
-    .eq('member_id', member.id)
+    .eq('member_id', member.id as string)
     .order('created_at', { ascending: false });
 
   return NextResponse.json({
@@ -257,7 +257,7 @@ async function handleGetReservations(kakao_user_id: string) {
         instructor:instructor_id (name)
       )
     `)
-    .eq('member_id', member.id)
+    .eq('member_id', member.id as string)
     .order('created_at', { ascending: false });
 
   return NextResponse.json({
@@ -290,7 +290,7 @@ async function handleMakeReservation(params: {
   const { data: reservation, error: reservationError } = await supabase
     .from('reservation')
     .insert({
-      member_id: member.id,
+      member_id: member.id as string,
       class_id,
       reservation_date,
       status: 'confirmed'
@@ -336,7 +336,7 @@ async function handleCancelReservation(params: {
   const { error: updateError } = await supabase
     .from('reservation')
     .update({ status: 'cancelled' })
-    .eq('member_id', member.id)
+    .eq('member_id', member.id as string)
     .eq('class_id', class_id)
     .eq('reservation_date', reservation_date);
 
@@ -376,13 +376,14 @@ async function handleGetAvailableClasses() {
   }
 
   // 각 수업의 예약 가능 여부 계산
-  const availableClasses = classes.map(cls => {
+  const availableClasses = classes.map((cls: any) => {
     const reservationCount = cls.reservations?.length || 0;
-    const isAvailable = reservationCount < cls.capacity;
+    const capacity = Number(cls.capacity) || 0;
+    const isAvailable = reservationCount < capacity;
     
     return {
       ...cls,
-      available_spots: cls.capacity - reservationCount,
+      available_spots: capacity - reservationCount,
       is_available: isAvailable
     };
   });

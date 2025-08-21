@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
       const { data: membershipHistory } = await supabase
         .from('membership_history')
         .select('*')
-        .eq('member_id', member.id)
+        .eq('member_id', member.id as string)
         .order('created_at', { ascending: false });
 
       return NextResponse.json({
@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
       const { data: membershipHistory } = await supabase
         .from('membership_history')
         .select('*')
-        .eq('member_id', existingMember.id)
+        .eq('member_id', existingMember.id as string)
         .order('created_at', { ascending: false });
 
       return NextResponse.json({
@@ -176,7 +176,7 @@ export async function POST(request: NextRequest) {
       const { error: updateError } = await supabase
         .from('member')
         .update({ kakao_id: kakao_user_id })
-        .eq('id', member.id);
+        .eq('id', member.id as string);
 
       if (updateError) {
         console.error('카카오 ID 매핑 오류:', updateError);
@@ -190,7 +190,7 @@ export async function POST(request: NextRequest) {
       const { data: membershipHistory } = await supabase
         .from('membership_history')
         .select('*')
-        .eq('member_id', member.id)
+        .eq('member_id', member.id as string)
         .order('created_at', { ascending: false });
 
       return NextResponse.json({

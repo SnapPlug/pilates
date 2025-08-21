@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (!data || !data.member) {
+    if (!data || !(data as any).member) {
       return NextResponse.json({
         success: false,
         message: '매핑된 회원을 찾을 수 없습니다.',

@@ -95,9 +95,9 @@ export default function ManagementPage() {
         const instructorId = classItem.instructor_id || 'unknown';
         const instructorName = (classItem.instructor as any)?.name || '미지정 강사';
         
-        if (!instructorStats.has(instructorId)) {
-          instructorStats.set(instructorId, {
-            instructorId,
+        if (!instructorStats.has(instructorId as string)) {
+          instructorStats.set(instructorId as string, {
+            instructorId: instructorId as string,
             instructorName,
             classCount: 0,
             studentCount: 0,
@@ -105,7 +105,7 @@ export default function ManagementPage() {
           });
         }
 
-        const stats = instructorStats.get(instructorId)!;
+        const stats = instructorStats.get(instructorId as string)!;
         stats.classCount++;
 
         // 해당 수업의 출석한 학생 수 계산

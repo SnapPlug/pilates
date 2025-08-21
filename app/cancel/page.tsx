@@ -56,16 +56,16 @@ function CancelInner() {
       const { data, error } = await q.order("created_at", { ascending: false });
       if (error) throw error;
 
-      const classIds = Array.from(new Set((data || []).map((r: ReservationRow) => r.class_id)));
+      const classIds = Array.from(new Set((data || []).map((r: any) => r.class_id as string)));
       const classesById: Record<string, ClassRow> = {};
       if (classIds.length > 0) {
         const { data: classData } = await supabase
           .from("class")
           .select("id,class_date,class_time,capacity")
           .in("id", classIds);
-        (classData || []).forEach((c: { id: string; class_date: string | Date; class_time: string; capacity: number }) => {
-          classesById[c.id] = {
-            id: c.id,
+        (classData || []).forEach((c: any) => {
+          classesById[c.id as string] = {
+            id: c.id as string,
             class_date: String(c.class_date),
             class_time: String(c.class_time).slice(0, 5),
             capacity: Number(c.capacity ?? 0),
@@ -73,10 +73,10 @@ function CancelInner() {
         });
       }
 
-      const merged: ReservationWithClass[] = (data || []).map((r: ReservationRow) => ({
+      const merged: ReservationWithClass[] = (data || []).map((r: any) => ({
         ...r,
-        class_date: classesById[r.class_id]?.class_date ?? null,
-        class_time: classesById[r.class_id]?.class_time ?? null,
+        class_date: classesById[r.class_id as string]?.class_date ?? null,
+        class_time: classesById[r.class_id as string]?.class_time ?? null,
       }));
       setRows(merged);
     } catch (e: unknown) {

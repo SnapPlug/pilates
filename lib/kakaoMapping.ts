@@ -22,7 +22,7 @@ export async function getMemberKakaoMapping(memberId: string): Promise<KakaoUser
       throw error;
     }
 
-    return data;
+    return data as unknown as KakaoUserMapping;
   } catch (error) {
     console.error('카카오 매핑 조회 실패:', error);
     throw error;
@@ -60,13 +60,13 @@ export async function getMemberByKakaoUserId(kakaoUserId: string): Promise<Membe
     }
 
     return {
-      id: data.id,
-      name: data.name,
-      phone: data.phone,
-      kakao_user_id: data.kakao_user_id,
-      mapping_status: data.kakao_user_mapping[0]?.mapping_status,
-      verification_code: data.kakao_user_mapping[0]?.verification_code,
-      verification_expires_at: data.kakao_user_mapping[0]?.verification_expires_at
+      id: data.id as string,
+      name: data.name as string,
+      phone: data.phone as string,
+      kakao_user_id: data.kakao_user_id as string,
+      mapping_status: (data.kakao_user_mapping[0] as any)?.mapping_status as "pending" | "verified" | "expired" | undefined,
+      verification_code: (data.kakao_user_mapping[0] as any)?.verification_code as string,
+      verification_expires_at: (data.kakao_user_mapping[0] as any)?.verification_expires_at as string
     };
   } catch (error) {
     console.error('카카오 사용자로 회원 조회 실패:', error);
@@ -88,8 +88,8 @@ export async function createKakaoMapping(memberId: string): Promise<{ mappingId:
     }
 
     return {
-      mappingId: data[0].mapping_id,
-      verificationCode: data[0].verification_code
+      mappingId: (data as any)[0].mapping_id as string,
+      verificationCode: (data as any)[0].verification_code as string
     };
   } catch (error) {
     console.error('카카오 매핑 생성 실패:', error);
@@ -130,7 +130,7 @@ export async function completeKakaoMapping(
         verified_at: new Date().toISOString(),
         last_activity_at: new Date().toISOString()
       })
-      .eq('id', mapping.id);
+              .eq('id', mapping.id as string);
 
     if (updateError) {
       console.error('매핑 완료 오류:', updateError);

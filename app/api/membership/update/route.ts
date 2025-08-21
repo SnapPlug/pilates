@@ -52,6 +52,10 @@ export async function PUT(request: NextRequest) {
     console.log('[API] 업데이트 payload:', updatePayload);
 
     // supabaseAdmin을 사용하여 RLS 우회
+    if (!supabaseAdmin) {
+      throw new Error('Supabase Admin 클라이언트를 초기화할 수 없습니다.');
+    }
+    
     const { data, error } = await supabaseAdmin
       .from('membership_history')
       .update(updatePayload)

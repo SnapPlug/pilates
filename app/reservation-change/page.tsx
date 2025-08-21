@@ -58,7 +58,7 @@ function ReservationChangeInner() {
             capacity
           )
         `)
-        .eq('id', reservationId)
+        .eq('id', reservationId || '')
         .single();
 
       if (reservationError || !reservationData) {
@@ -69,6 +69,9 @@ function ReservationChangeInner() {
       // class 정보 정규화 (배열에서 객체로 변환)
       const normalizedReservation = {
         ...reservationData,
+        id: reservationData.id as string,
+        name: reservationData.name as string,
+        phone: reservationData.phone as string,
         class: Array.isArray(reservationData.class) 
           ? reservationData.class[0] 
           : reservationData.class
@@ -103,16 +106,20 @@ function ReservationChangeInner() {
           const { data: reservationCount } = await supabaseClient
             .from('reservation')
             .select('id', { count: 'exact' })
-            .eq('class_id', classInfo.id);
+            .eq('class_id', classInfo.id as string);
 
-          const availableSlots = classInfo.capacity - (reservationCount?.length || 0);
+          const availableSlots = (classInfo.capacity as number) - (reservationCount?.length || 0);
           
           // 현재 시간보다 미래인지 확인
-          const isFuture = classInfo.class_date > today || 
-            (classInfo.class_date === today && classInfo.class_time > nowTime);
+          const isFuture = (classInfo.class_date as string) > today || 
+            ((classInfo.class_date as string) === today && (classInfo.class_time as string) > nowTime);
           
           return {
             ...classInfo,
+            id: classInfo.id as string,
+            class_date: classInfo.class_date as string,
+            class_time: classInfo.class_time as string,
+            capacity: classInfo.capacity as number,
             availableSlots,
             isAvailable: availableSlots > 0 && isFuture
           };

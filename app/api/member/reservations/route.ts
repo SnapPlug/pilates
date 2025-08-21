@@ -39,15 +39,15 @@ export async function GET(request: NextRequest) {
       }
 
       memberData = data;
-      memberId = data.id;
+      memberId = (data as any).id;
       console.log('kakao_user_id로 회원 찾음:', data);
     } else {
       // 이름과 전화번호로 회원 찾기
       const { data, error: memberError } = await supabaseClient
         .from('member')
         .select('id, name, phone')
-        .eq('name', memberName)
-        .eq('phone', memberPhone)
+        .eq('name', memberName || '')
+        .eq('phone', memberPhone || '')
         .single();
 
       if (memberError || !data) {
@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
       }
 
       memberData = data;
-      memberId = data.id;
+      memberId = (data as any).id;
       console.log('이름/전화번호로 회원 찾음:', data);
     }
 

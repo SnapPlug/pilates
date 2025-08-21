@@ -135,8 +135,8 @@ function ReservationInner() {
           .from("class")
           .select("id,class_date,class_time,capacity,\"member name\"");
         if (error) throw error;
-        const normalized: ClassRow[] = (data || []).map((r: { id: string; class_date: string | Date; class_time: string; capacity: number; [key: string]: unknown }) => ({
-          id: r.id,
+        const normalized: ClassRow[] = (data || []).map((r: any) => ({
+          id: r.id as string,
           class_date: String(r.class_date),
           class_time: String(r.class_time).slice(0, 5),
           capacity: Number(r.capacity ?? 0),
@@ -378,8 +378,8 @@ function ReservationInner() {
           .in("class_id", ids);
         if (error) throw error;
         const counts: Record<string, number> = {};
-        (data || []).forEach((r: { class_id: string }) => {
-          counts[r.class_id] = (counts[r.class_id] ?? 0) + 1;
+        (data || []).forEach((r: any) => {
+          counts[r.class_id as string] = (counts[r.class_id as string] ?? 0) + 1;
         });
         setReservationsByClass(counts);
       } catch (e) {

@@ -87,13 +87,13 @@ export async function getLatestMembershipInfo(memberId: string): Promise<Members
     }
 
     return {
-      membership_status: data.status || '미등록',
-      remaining_sessions: data.remaining_sessions || 0,
-      expires_at: data.end_date,
-      membership_type: data.membership_type,
-      start_date: data.start_date,
-      total_sessions: data.total_sessions || 0,
-      used_sessions: data.used_sessions || 0
+      membership_status: (data.status as string) || '미등록',
+      remaining_sessions: (data.remaining_sessions as number) || 0,
+      expires_at: data.end_date as string | null,
+      membership_type: data.membership_type as string | null,
+      start_date: data.start_date as string | null,
+      total_sessions: (data.total_sessions as number) || 0,
+      used_sessions: (data.used_sessions as number) || 0
     };
   } catch (error) {
     console.error('회원권 정보 조회 중 오류:', error);
@@ -136,7 +136,7 @@ export async function getAllMembersWithMembership(): Promise<MemberWithMembershi
     // 2. 각 회원의 최신 회원권 정보 조회
     const membersWithMembership = await Promise.all(
       members.map(async (member) => {
-        const membershipInfo = await getLatestMembershipInfo(member.id);
+        const membershipInfo = await getLatestMembershipInfo(member.id as string);
         
         return {
           ...member,
@@ -151,7 +151,7 @@ export async function getAllMembersWithMembership(): Promise<MemberWithMembershi
       })
     );
 
-    return membersWithMembership;
+    return membersWithMembership as unknown as MemberWithMembership[];
   } catch (error) {
     console.error('회원 정보 조회 중 오류:', error);
     throw error;

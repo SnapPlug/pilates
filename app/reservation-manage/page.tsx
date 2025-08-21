@@ -52,7 +52,7 @@ function ReservationManageInner() {
       const { data: memberData, error: memberError } = await supabaseClient
         .from('member')
         .select('id, name, phone')
-        .eq('kakao_user_id', kakaoUserId)
+        .eq('kakao_user_id', kakaoUserId || '')
         .single();
 
       console.log('회원 정보 조회 결과:', { memberData, memberError });
@@ -63,7 +63,11 @@ function ReservationManageInner() {
         return;
       }
 
-      setMember(memberData);
+      setMember({
+        id: memberData.id as string,
+        name: memberData.name as string,
+        phone: memberData.phone as string
+      });
 
       // 예약 정보 조회 (class 정보 포함)
       console.log('예약 조회 쿼리 시작:', { name: memberData.name, phone: memberData.phone });
@@ -82,8 +86,8 @@ function ReservationManageInner() {
             capacity
           )
         `)
-        .eq('name', memberData.name)
-        .eq('phone', memberData.phone);
+        .eq('name', memberData.name as string)
+        .eq('phone', memberData.phone as string);
 
       console.log('예약 조회 결과:', { reservationData, reservationError });
 

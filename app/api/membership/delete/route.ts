@@ -23,6 +23,10 @@ export async function DELETE(request: NextRequest) {
     console.log('[API] 삭제 대상 ID:', membershipId);
 
     // supabaseAdmin을 사용하여 RLS 우회
+    if (!supabaseAdmin) {
+      throw new Error('Supabase Admin 클라이언트를 초기화할 수 없습니다.');
+    }
+    
     const { data, error } = await supabaseAdmin
       .from('membership_history')
       .delete()

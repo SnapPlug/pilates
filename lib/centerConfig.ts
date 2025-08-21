@@ -17,7 +17,7 @@ export async function getAllActiveCenters(): Promise<CenterConfig[]> {
       throw error;
     }
 
-    return data || [];
+    return (data || []) as unknown as CenterConfig[];
   } catch (error) {
     console.error('센터 설정 조회 실패:', error);
     throw error;
@@ -45,7 +45,7 @@ export async function getCenterConfig(centerName: string): Promise<CenterConfig 
       throw error;
     }
 
-    return data;
+    return data as unknown as CenterConfig;
   } catch (error) {
     console.error('센터 설정 조회 실패:', error);
     throw error;
@@ -72,7 +72,7 @@ export async function getCenterConfigById(centerId: string): Promise<CenterConfi
       throw error;
     }
 
-    return data;
+    return data as unknown as CenterConfig;
   } catch (error) {
     console.error('센터 설정 조회 실패:', error);
     throw error;
@@ -99,7 +99,7 @@ export async function getDefaultKakaoBotId(): Promise<string> {
       return process.env.NEXT_PUBLIC_KAKAO_BOT_ID || 'YOUR_BOT_ID';
     }
 
-    return data?.kakao_bot_id || process.env.NEXT_PUBLIC_KAKAO_BOT_ID || 'YOUR_BOT_ID';
+    return (data as any)?.kakao_bot_id || process.env.NEXT_PUBLIC_KAKAO_BOT_ID || 'YOUR_BOT_ID';
   } catch (error) {
     console.error('기본 카카오봇 ID 조회 실패:', error);
     return process.env.NEXT_PUBLIC_KAKAO_BOT_ID || 'YOUR_BOT_ID';
@@ -119,7 +119,7 @@ export async function generateCenterKakaoLink(centerName: string, memberId?: str
       return `https://pf.kakao.com/${defaultBotId}/chat${memberId ? `?member_id=${memberId}` : ''}`;
     }
 
-    const baseUrl = `https://pf.kakao.com/${centerConfig.kakao_bot_id}/chat`;
+    const baseUrl = `https://pf.kakao.com/${(centerConfig as any).kakao_bot_id}/chat`;
     return memberId ? `${baseUrl}?member_id=${memberId}` : baseUrl;
   } catch (error) {
     console.error('카카오챗봇 링크 생성 실패:', error);
@@ -144,7 +144,7 @@ export async function upsertCenterConfig(config: Partial<CenterConfig>): Promise
       throw error;
     }
 
-    return data;
+    return data as unknown as CenterConfig;
   } catch (error) {
     console.error('센터 설정 저장 실패:', error);
     throw error;

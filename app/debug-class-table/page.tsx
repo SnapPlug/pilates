@@ -68,7 +68,7 @@ export default function DebugClassTable() {
         const { error: deleteError } = await supabase
           .from("class")
           .delete()
-          .eq("id", insertData[0].id);
+          .eq("id", (insertData[0] as any).id);
 
         if (deleteError) {
           setResult(prev => prev + `테스트 데이터 삭제 오류: ${JSON.stringify(deleteError, null, 2)}`);

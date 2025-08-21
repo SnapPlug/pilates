@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
       const { data, error } = await supabase
         .from('member')
         .select('id, name, phone')
-        .eq('phone', phone)
+        .eq('phone', phone || '')
         .single();
       
       if (error || !data) {
