@@ -112,9 +112,9 @@ export const AppleCalendar: React.FC<AppleCalendarProps> = ({ className, onAdd }
         .order("name", { ascending: true });
       
       if (!instructorError && instructorData) {
-        const instructors: Instructor[] = instructorData.map((row: { id: string; name: string }) => ({
-          id: row.id,
-          name: row.name
+        const instructors: Instructor[] = instructorData.map((row: any) => ({
+          id: row.id as string,
+          name: row.name as string
         }));
         setInstructors(instructors);
         
@@ -194,7 +194,12 @@ export const AppleCalendar: React.FC<AppleCalendarProps> = ({ className, onAdd }
         return;
       }
 
-      setSelectedClassReservations(reservations || []);
+      const typedReservations = (reservations || []).map((r: any) => ({
+        id: r.id as string,
+        name: r.name as string,
+        attendance_status: r.attendance_status as string
+      }));
+      setSelectedClassReservations(typedReservations);
       setShowAttendanceModal(true);
     } catch (error) {
       console.error('출석 체크 오류:', error);
