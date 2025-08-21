@@ -12,15 +12,18 @@ interface AttendanceModalProps {
     attendance_status: string;
   }>;
   onAttendanceUpdate: (reservationId: string, status: string) => Promise<void>;
+  onReservationCancel?: (reservationId: string) => Promise<void>;
 }
 
 export function AttendanceModal({
   isOpen,
   onClose,
   reservations,
-  onAttendanceUpdate
+  onAttendanceUpdate,
+  onReservationCancel
 }: AttendanceModalProps) {
   const [updating, setUpdating] = useState<string | null>(null);
+  const [canceling, setCanceling] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -33,6 +36,24 @@ export function AttendanceModal({
       alert('출석 상태 업데이트에 실패했습니다.');
     } finally {
       setUpdating(null);
+    }
+  };
+
+  const handleReservationCancel = async (reservationId: string) => {
+    if (!onReservationCancel) return;
+    
+    if (!confirm('정말로 이 예약을 취소하시겠습니까? 취소된 예약은 복구할 수 없습니다.')) {
+      return;
+    }
+
+    try {
+      setCanceling(reservationId);
+      await onReservationCancel(reservationId);
+    } catch (error) {
+      console.error('예약 취소 오류:', error);
+      alert('예약 취소에 실패했습니다.');
+    } finally {
+      setCanceling(null);
     }
   };
 
@@ -76,18 +97,27 @@ export function AttendanceModal({
               <div className="flex space-x-2">
                 <Button
                   onClick={() => handleAttendanceUpdate(reservation.id, 'attended')}
-                  disabled={updating === reservation.id}
+                  disabled={updating === reservation.id || canceling === reservation.id}
                   className="flex-1 bg-green-500 hover:bg-green-600 text-white"
                 >
                   {updating === reservation.id ? '처리 중...' : '출석'}
                 </Button>
                 <Button
                   onClick={() => handleAttendanceUpdate(reservation.id, 'absent')}
-                  disabled={updating === reservation.id}
+                  disabled={updating === reservation.id || canceling === reservation.id}
                   className="flex-1 bg-red-500 hover:bg-red-600 text-white"
                 >
                   {updating === reservation.id ? '처리 중...' : '결석'}
                 </Button>
+                {onReservationCancel && (
+                  <Button
+                    onClick={() => handleReservationCancel(reservation.id)}
+                    disabled={updating === reservation.id || canceling === reservation.id}
+                    className="flex-1 bg-orange-500 hover:bg-orange-600 text-white"
+                  >
+                    {canceling === reservation.id ? '취소 중...' : '예약취소'}
+                  </Button>
+                )}
               </div>
             </div>
           ))}

@@ -42,6 +42,8 @@ type ClassRow = {
   class_date: string; // yyyy-mm-dd
   class_time: string; // HH:MM:SS or HH:MM
   capacity: number;
+  class_name?: string; // 수업명
+  instructor_name?: string; // 강사명
   member_name?: string | null; // 예약자명(개발용, 콤마구분 가능성)
   isPastClass?: boolean; // 과거 수업 여부
 };
@@ -83,6 +85,14 @@ function ReservationInner() {
   const [showChangeForm, setShowChangeForm] = useState<string | null>(null);
 
   const [reservationsByClass, setReservationsByClass] = useState<Record<string, number>>({});
+  const [instructors, setInstructors] = useState<Array<{id: string, name: string}>>([]);
+
+  // 강사 이름 가져오기 함수
+  const getInstructorName = (instructorId: string | null, instructorList: Array<{id: string, name: string}>): string => {
+    if (!instructorId) return "미지정";
+    const instructor = instructorList.find(i => i.id === instructorId);
+    return instructor ? instructor.name : "미지정";
+  };
 
   // 카카오 사용자 ID와 회원 정보 매핑
   const handleUserMapping = async (name: string, phone: string) => {
@@ -128,18 +138,40 @@ function ReservationInner() {
 
   useEffect(() => {
     console.log("ReservationInner 컴포넌트 마운트됨");
-    const fetchClasses = async () => {
+    const fetchData = async () => {
       try {
         setLoading(true);
+        
+        // 1. 강사 데이터 로드
+        const { data: instructorData, error: instructorError } = await supabase
+          .from("instructor")
+          .select("id, name")
+          .order("name", { ascending: true });
+        
+        if (instructorError) {
+          console.error("강사 데이터 로드 오류:", instructorError);
+        } else {
+          setInstructors((instructorData || []).map((i: any) => ({
+            id: i.id as string,
+            name: i.name as string
+          })));
+        }
+        
+        // 2. 수업 데이터 로드
         const { data, error } = await supabase
           .from("class")
-          .select("id,class_date,class_time,capacity,\"member name\"");
+          .select("id,class_date,class_time,capacity,class_name,instructor_id,\"member name\"");
         if (error) throw error;
         const normalized: ClassRow[] = (data || []).map((r: any) => ({
           id: r.id as string,
           class_date: String(r.class_date),
           class_time: String(r.class_time).slice(0, 5),
           capacity: Number(r.capacity ?? 0),
+          class_name: r.class_name || '필라테스',
+          instructor_name: getInstructorName(r.instructor_id, (instructorData || []).map((i: any) => ({
+            id: i.id as string,
+            name: i.name as string
+          }))),
           member_name: typeof r["member name"] === "string" ? (r["member name"] as string) : null,
         }));
         setClasses(normalized);
@@ -151,8 +183,8 @@ function ReservationInner() {
         setLoading(false);
       }
     };
-    fetchClasses();
-  }, []);
+    fetchData();
+  }, []); // 컴포넌트 마운트 시에만 실행
 
   // mode가 cancel이나 change일 때 자동으로 예약 목록 불러오기
   useEffect(() => {
@@ -436,10 +468,27 @@ function ReservationInner() {
         return;
       }
       
-      // 2) insert reservation
+      // 2) 예약 전에 회원 매칭 확인
+      let memberId = null;
+      if (userName && userPhone) {
+        const { data: memberData } = await supabase
+          .from('member')
+          .select('id')
+          .eq('name', userName)
+          .eq('phone', userPhone)
+          .single();
+        
+        if (memberData) {
+          memberId = memberData.id;
+          console.log('회원 매칭됨:', { userName, memberId });
+        }
+      }
+
+      // 3) insert reservation
       const { error } = await supabase.from("reservation").insert({
         class_id: row.id,
         uid: uidFromUrl || null,
+        member_id: memberId, // 매칭된 회원 ID 또는 null
         name: userName,
         phone: userPhone,
       });
@@ -493,6 +542,21 @@ function ReservationInner() {
             } else {
               console.log('카카오 사용자 ID가 성공적으로 저장되었습니다.');
               setMappingStatus("매핑 성공!");
+              
+              // 예약의 member_id 업데이트
+              const { error: updateReservationError } = await supabase
+                .from('reservation')
+                .update({ member_id: member.id })
+                .eq('class_id', row.id)
+                .eq('name', userName)
+                .eq('phone', userPhone)
+                .is('member_id', null); // member_id가 null인 예약만 업데이트
+              
+              if (updateReservationError) {
+                console.error('예약 member_id 업데이트 오류:', updateReservationError);
+              } else {
+                console.log('예약 member_id 업데이트 완료');
+              }
             }
           } else {
             console.log('매칭되는 회원을 찾을 수 없습니다:', { name: userName, phone: userPhone });
@@ -674,9 +738,12 @@ function ReservationInner() {
                             const isFull = reserved >= classItem.capacity;
                             return (
                               <div key={classItem.id} className="flex items-center justify-between p-2 bg-white rounded border">
-                                <div className="text-sm">
+                                <div className="text-sm flex-1">
                                   <div className="font-medium">
                                     {classItem.class_date} {classItem.class_time}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    {classItem.class_name} • {classItem.instructor_name}
                                   </div>
                                   <div className="text-xs text-muted-foreground">
                                     예약 {reserved}/{classItem.capacity}
@@ -734,8 +801,11 @@ function ReservationInner() {
                   <div key={row.id} className={`flex items-center justify-between rounded border p-3 ${
                     isPastClass ? 'opacity-50 bg-gray-50' : ''
                   }`}>
-                    <div>
+                    <div className="flex-1">
                       <div className="text-sm font-medium">{row.class_time}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {row.class_name} • {row.instructor_name}
+                      </div>
                       <div className="text-xs text-muted-foreground">
                         예약 {reserved}/{row.capacity}
                         {isPastClass && <span className="text-red-500 ml-2">(지난 수업)</span>}

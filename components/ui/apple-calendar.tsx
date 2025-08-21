@@ -20,6 +20,8 @@ import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
 import { AttendanceModal } from "./attendance-modal";
+import { AdminReservationModal } from "./admin-reservation-modal";
+import { MemberPopover } from "./member-popover";
 
 type AppleCalendarProps = {
   className?: string;
@@ -37,7 +39,7 @@ export const AppleCalendar: React.FC<AppleCalendarProps> = ({ className, onAdd }
     instructorId?: string | null;
     members: string[]; // legacy demo field
     reservedCount?: number; // from reservation table
-    reservations?: { id: string; name: string }[]; // from reservation table
+    reservations?: { id: string; name: string; member_id?: string | null }[]; // from reservation table
   };
   type Instructor = { id: string; name: string };
   const [currentDate, setCurrentDate] = React.useState<Date>(new Date());
@@ -65,6 +67,7 @@ export const AppleCalendar: React.FC<AppleCalendarProps> = ({ className, onAdd }
     time: "",
     capacity: "3",
     instructorId: "",
+    class_name: "필라테스",
     notes: ""
   });
   
@@ -75,6 +78,25 @@ export const AppleCalendar: React.FC<AppleCalendarProps> = ({ className, onAdd }
     name: string;
     attendance_status: string;
   }>>([]);
+
+  // 관리자 예약 관련 상태
+  const [showAdminReservationModal, setShowAdminReservationModal] = React.useState<boolean>(false);
+  const [selectedClassForReservation, setSelectedClassForReservation] = React.useState<{
+    id: string;
+    name: string;
+    date: string;
+    time: string;
+    currentReservations: number;
+    capacity: number;
+  } | null>(null);
+
+  // 회원 팝오버 관련 상태
+  const [showMemberPopover, setShowMemberPopover] = React.useState<boolean>(false);
+  const [selectedMemberForPopover, setSelectedMemberForPopover] = React.useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [popoverPosition, setPopoverPosition] = React.useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
@@ -149,17 +171,19 @@ export const AppleCalendar: React.FC<AppleCalendarProps> = ({ className, onAdd }
             if (ids.length > 0) {
               const { data: resv, error: resvErr } = await supabase
                 .from("reservation")
-                .select("id,class_id,name,attendance_status").in("class_id", ids as string[]);
+                .select("id,class_id,name,attendance_status,member_id").in("class_id", ids as string[]);
               if (!resvErr && resv) {
                 const counts: Record<string, number> = {};
-                const byClass: Record<string, { id: string; name: string; attendance_status?: string }[]> = {};
-                (resv as { id: string; class_id: string; name: string; attendance_status?: string }[]).forEach((r) => {
+                const byClass: Record<string, { id: string; name: string; attendance_status?: string; member_id?: string }[]> = {};
+                (resv as { id: string; class_id: string; name: string; attendance_status?: string; member_id?: string }[]).forEach((r) => {
+                  console.log('예약 데이터:', r); // 디버깅용
                   counts[r.class_id] = (counts[r.class_id] ?? 0) + 1;
                   if (!byClass[r.class_id]) byClass[r.class_id] = [];
                   byClass[r.class_id].push({ 
                     id: r.id, 
-                    name: (r.name || "").trim(),
-                    attendance_status: r.attendance_status || 'pending'
+                                      name: (r.name || "").trim(),
+                  attendance_status: r.attendance_status || 'pending',
+                  member_id: r.member_id || undefined
                   });
                 });
                 setDemoClasses((prev) => prev.map((c) => ({
@@ -248,10 +272,76 @@ export const AppleCalendar: React.FC<AppleCalendarProps> = ({ className, onAdd }
     }
   };
 
+  const handleReservationCancel = async (reservationId: string) => {
+    try {
+      const response = await fetch('/api/reservation/cancel', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          reservation_id: reservationId
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        console.log('예약 취소 성공:', result.data);
+        
+        // 성공 시 예약 목록에서 제거
+        const updatedReservations = selectedClassReservations.filter(reservation => 
+          reservation.id !== reservationId
+        );
+        setSelectedClassReservations(updatedReservations);
+        
+        // 캘린더 데이터 새로고침
+        await loadDb();
+        
+        // 성공 메시지 표시
+        alert('예약이 취소되었습니다.');
+      } else {
+        throw new Error(result.error || '예약 취소에 실패했습니다.');
+      }
+    } catch (error) {
+      console.error('예약 취소 오류:', error);
+      throw error;
+    }
+  };
+
+  // 관리자 예약 모달 열기
+  const handleAdminReservation = (classData: {
+    id: string;
+    name: string;
+    date: string;
+    time: string;
+    currentReservations: number;
+    capacity: number;
+  }) => {
+    setSelectedClassForReservation(classData);
+    setShowAdminReservationModal(true);
+  };
+
+  // 관리자 예약 성공 후 처리
+  const handleAdminReservationSuccess = async () => {
+    await loadDb();
+  };
+
+  // 회원 팝오버 열기
+  const handleMemberClick = (e: React.MouseEvent, memberId: string, memberName: string) => {
+    e.stopPropagation();
+    console.log('회원 클릭:', { memberId, memberName });
+    console.log('팝오버 상태 설정:', { memberId, memberName, x: e.clientX, y: e.clientY });
+    setSelectedMemberForPopover({ id: memberId, name: memberName });
+    setPopoverPosition({ x: e.clientX, y: e.clientY });
+    setShowMemberPopover(true);
+    console.log('팝오버 열기 완료');
+  };
+
   // 수업 추가 함수
   const handleAddClass = async () => {
-    if (!addClassForm.date || !addClassForm.time || !addClassForm.capacity) {
-      alert("날짜, 시간, 정원을 모두 입력해주세요.");
+    if (!addClassForm.date || !addClassForm.time || !addClassForm.capacity || !addClassForm.class_name.trim()) {
+      alert("날짜, 시간, 정원, 수업명을 모두 입력해주세요.");
       return;
     }
 
@@ -267,12 +357,14 @@ export const AppleCalendar: React.FC<AppleCalendarProps> = ({ className, onAdd }
         class_time: string;
         capacity: number;
         instructor_id: string | null;
+        class_name: string;
         notes?: string;
       } = {
         class_date: addClassForm.date,
         class_time: addClassForm.time,
         capacity: Number(addClassForm.capacity),
-        instructor_id: addClassForm.instructorId || null
+        instructor_id: addClassForm.instructorId || null,
+        class_name: addClassForm.class_name.trim() || '필라테스'
       };
 
       // notes가 비어있지 않을 때만 포함
@@ -295,6 +387,7 @@ export const AppleCalendar: React.FC<AppleCalendarProps> = ({ className, onAdd }
         time: "",
         capacity: "3",
         instructorId: "",
+        class_name: "필라테스",
         notes: ""
       });
       
@@ -411,14 +504,19 @@ export const AppleCalendar: React.FC<AppleCalendarProps> = ({ className, onAdd }
             if (ids.length > 0) {
               const { data: resv, error: resvErr } = await supabase
                 .from("reservation")
-                .select("id,class_id,name").in("class_id", ids as string[]);
+                .select("id,class_id,name,member_id").in("class_id", ids as string[]);
               if (!resvErr && resv) {
                 const counts: Record<string, number> = {};
-                const byClass: Record<string, { id: string; name: string; attendance?: "present" | "absent" | null }[]> = {};
-                (resv as { id: string; class_id: string; name: string }[]).forEach((r) => {
+                const byClass: Record<string, { id: string; name: string; member_id?: string | null; attendance?: "present" | "absent" | null }[]> = {};
+                (resv as { id: string; class_id: string; name: string; member_id?: string }[]).forEach((r) => {
                   counts[r.class_id] = (counts[r.class_id] ?? 0) + 1;
                   if (!byClass[r.class_id]) byClass[r.class_id] = [];
-                  byClass[r.class_id].push({ id: r.id, name: (r.name || "").trim(), attendance: null });
+                  byClass[r.class_id].push({ 
+                    id: r.id, 
+                    name: (r.name || "").trim(), 
+                    member_id: r.member_id || undefined,
+                    attendance: null 
+                  });
                 });
                 setDemoClasses((prev) => prev.map((c) => ({
                   ...c,
@@ -672,6 +770,7 @@ export const AppleCalendar: React.FC<AppleCalendarProps> = ({ className, onAdd }
                 time: "",
                 capacity: "3",
                 instructorId: "",
+                class_name: "필라테스",
                 notes: ""
               });
               setShowAddClassModal(true);
@@ -747,7 +846,25 @@ export const AppleCalendar: React.FC<AppleCalendarProps> = ({ className, onAdd }
                               {c.instructorName || "강사 미지정"}
                             </div>
                           </div>
-                          <span className="shrink-0">({typeof c.reservedCount==='number'?c.reservedCount:0}/{c.capacity})</span>
+                          <span 
+                            className="shrink-0 cursor-pointer hover:bg-white/20 px-1 rounded"
+                            onClick={(e) => { 
+                              e.stopPropagation(); 
+                              if (c.id) {
+                                handleAdminReservation({
+                                  id: c.id,
+                                  name: c.instructorName || "강사 미지정",
+                                  date: c.date,
+                                  time: c.time,
+                                  currentReservations: typeof c.reservedCount === 'number' ? c.reservedCount : 0,
+                                  capacity: c.capacity
+                                });
+                              }
+                            }}
+                            title="관리자 예약"
+                          >
+                            ({typeof c.reservedCount==='number'?c.reservedCount:0}/{c.capacity})
+                          </span>
                         </div>
                         {/* 월간보기에서는 회원명(예약자) 표시는 숨김 */}
                       </div>
@@ -843,7 +960,25 @@ export const AppleCalendar: React.FC<AppleCalendarProps> = ({ className, onAdd }
                                 {c.instructorName || "강사 미지정"}
                               </div>
                               <div className="flex items-center gap-2">
-                                <span>({typeof c.reservedCount==='number'?c.reservedCount:0}/{c.capacity})</span>
+                                <span 
+                                  className="cursor-pointer hover:bg-white/20 px-1 rounded"
+                                  onClick={(e) => { 
+                                    e.stopPropagation(); 
+                                    if (c.id) {
+                                      handleAdminReservation({
+                                        id: c.id,
+                                        name: c.instructorName || "강사 미지정",
+                                        date: c.date,
+                                        time: c.time,
+                                        currentReservations: typeof c.reservedCount === 'number' ? c.reservedCount : 0,
+                                        capacity: c.capacity
+                                      });
+                                    }
+                                  }}
+                                  title="관리자 예약"
+                                >
+                                  ({typeof c.reservedCount==='number'?c.reservedCount:0}/{c.capacity})
+                                </span>
                                 {c.id && (c.reservedCount || 0) > 0 && (
                                   <button
                                     onClick={(e) => { 
@@ -860,15 +995,27 @@ export const AppleCalendar: React.FC<AppleCalendarProps> = ({ className, onAdd }
                             </div>
                             <div className="mt-2 grid grid-cols-3 gap-2"
                             >
-                              {(c.reservations ?? []).map((rsv, i) => (
-                                <span
-                                  key={`${rsv.id}-${i}`}
-                                  className="inline-flex w-full items-center justify-center rounded-full bg-white/90 px-2 py-1 text-[11px] text-sky-700 truncate"
-                                  title="예약자"
-                                >
-                                  {rsv.name || "이름없음"}
-                                </span>
-                              ))}
+                                          {(c.reservations ?? []).map((rsv, i) => {
+              const isGuest = !rsv.member_id; // member_id가 null이면 체험자
+              return (
+                                  <span
+                                    key={`${rsv.id}-${i}`}
+                                    className={`inline-flex w-full items-center justify-center rounded-full bg-white/90 px-2 py-1 text-[11px] text-sky-700 truncate transition-colors ${
+                                      isGuest ? 'cursor-default' : 'cursor-pointer hover:bg-white/100'
+                                    }`}
+                                    title={isGuest ? "체험자 (비회원)" : "회원 정보 보기 (클릭)"}
+                                    onClick={(e) => {
+                                      console.log('클릭된 예약:', { rsv, isGuest, memberId: rsv.member_id });
+                                      if (!isGuest && rsv.member_id) {
+                                        handleMemberClick(e, rsv.member_id, rsv.name || "이름없음");
+                                      }
+                                    }}
+                                  >
+                                    {rsv.name || "이름없음"}
+                                    {isGuest && <span className="ml-1 text-orange-600 font-bold">*</span>}
+                                  </span>
+                                );
+                              })}
                             </div>
                           </div>
                         );
@@ -889,7 +1036,38 @@ export const AppleCalendar: React.FC<AppleCalendarProps> = ({ className, onAdd }
         onClose={() => setShowAttendanceModal(false)}
         reservations={selectedClassReservations}
         onAttendanceUpdate={handleAttendanceUpdate}
+        onReservationCancel={handleReservationCancel}
       />
+
+      {selectedClassForReservation && (
+        <AdminReservationModal
+          isOpen={showAdminReservationModal}
+          onClose={() => {
+            setShowAdminReservationModal(false);
+            setSelectedClassForReservation(null);
+          }}
+          classId={selectedClassForReservation.id}
+          className={selectedClassForReservation.name}
+          classDate={selectedClassForReservation.date}
+          classTime={selectedClassForReservation.time}
+          currentReservations={selectedClassForReservation.currentReservations}
+          capacity={selectedClassForReservation.capacity}
+          onReservationSuccess={handleAdminReservationSuccess}
+        />
+      )}
+
+      {selectedMemberForPopover && (
+        <MemberPopover
+          isOpen={showMemberPopover}
+          onClose={() => {
+            setShowMemberPopover(false);
+            setSelectedMemberForPopover(null);
+          }}
+          memberId={selectedMemberForPopover.id}
+          memberName={selectedMemberForPopover.name}
+          position={popoverPosition}
+        />
+      )}
 
       {activeInstructorEdit && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
@@ -1000,6 +1178,18 @@ export const AppleCalendar: React.FC<AppleCalendarProps> = ({ className, onAdd }
                     </option>
                   ))}
                 </select>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium mb-1">수업명</label>
+                <input
+                  type="text"
+                  value={addClassForm.class_name}
+                  onChange={(e) => setAddClassForm({...addClassForm, class_name: e.target.value})}
+                  className="w-full p-2 border rounded text-sm"
+                  placeholder="수업명을 입력하세요"
+                  required
+                />
               </div>
               
               <div>
