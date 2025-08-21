@@ -525,7 +525,7 @@ export default function Page() {
             </thead>
             <tbody>
               {filtered.map((m) => (
-                <tr key={m.id} className="border-t">
+                <tr key={m.id} className={`border-t ${m.membership_status === "만료" ? "bg-red-50/30" : ""}`}>
                   <td className="px-3 py-3 font-medium">{m.name}</td>
                   <td className="px-3 py-3">{m.gender || "-"}</td>
                   <td className="px-3 py-3 tabular-nums">{m.age || 0}</td>
@@ -540,7 +540,7 @@ export default function Page() {
                     ) : m.membership_status === "미등록" ? (
                       <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-700">미등록</span>
                     ) : m.membership_status === "만료" ? (
-                      <span className="inline-flex items-center rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-medium text-rose-700">만료</span>
+                      <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-700 border border-red-200">만료</span>
                     ) : m.membership_status === "미입력" ? (
                       <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">미입력</span>
                     ) : (
@@ -560,8 +560,16 @@ export default function Page() {
                   </td>
                   <td className="px-3 py-3">{toDisplayDate(m.registered_at)}</td>
                   <td className="px-3 py-3">{toDisplayDate(m.last_visit_at)}</td>
-                  <td className="px-3 py-3 tabular-nums">{m.remaining_sessions}</td>
-                  <td className="px-3 py-3">{toDisplayDate(m.expires_at)}</td>
+                  <td className="px-3 py-3 tabular-nums">
+                    <span className={m.membership_status === "만료" ? "text-red-600 font-medium" : ""}>
+                      {m.remaining_sessions}
+                    </span>
+                  </td>
+                  <td className="px-3 py-3">
+                    <span className={m.membership_status === "만료" ? "text-red-600 font-medium" : ""}>
+                      {toDisplayDate(m.expires_at)}
+                    </span>
+                  </td>
                   <td className="px-3 py-3 tabular-nums">{m.points || 0}</td>
                   <td className="px-3 py-3">
                     <div className="flex items-center gap-2">

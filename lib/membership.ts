@@ -86,8 +86,14 @@ export async function getLatestMembershipInfo(memberId: string): Promise<Members
       };
     }
 
+    // 회원권 상태를 자동으로 계산
+    const calculatedStatus = calculateMembershipStatus(
+      data.end_date as string | null, 
+      (data.remaining_sessions as number) || 0
+    );
+
     return {
-      membership_status: (data.status as string) || '미등록',
+      membership_status: calculatedStatus,
       remaining_sessions: (data.remaining_sessions as number) || 0,
       expires_at: data.end_date as string | null,
       membership_type: data.membership_type as string | null,
@@ -173,7 +179,9 @@ export function calculateMembershipStatus(expiresAt: string | null, remainingSes
   }
 
   const today = new Date();
+  today.setHours(0, 0, 0, 0); // 시간을 00:00:00으로 설정하여 날짜만 비교
   const expiryDate = new Date(expiresAt);
+  expiryDate.setHours(0, 0, 0, 0); // 시간을 00:00:00으로 설정하여 날짜만 비교
 
   // 만료일이 지났거나 잔여횟수가 0이면 '만료'
   if (expiryDate < today || remainingSessions <= 0) {
