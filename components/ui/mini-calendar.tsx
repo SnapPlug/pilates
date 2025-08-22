@@ -34,12 +34,20 @@ type ViewMode = "week" | "two-weeks" | "month";
 type MiniCalendarProps = {
   onSelect?: (date: Date) => void;
   dayStatus?: (date: Date) => "available" | "full" | "none"; // visual marker per day
+  viewMode?: "1주" | "2주" | "1달"; // 설정에서 선택한 보기 모드
 };
 
-export const Calendar: React.FC<MiniCalendarProps> = ({ onSelect, dayStatus }) => {
+export const Calendar: React.FC<MiniCalendarProps> = ({ onSelect, dayStatus, viewMode = "1주" }) => {
   const [selectedDate, setSelectedDate] = React.useState<Date>(new Date());
   const [currentDate, setCurrentDate] = React.useState<Date>(new Date());
   const [view, setView] = React.useState<ViewMode>("week");
+
+  // viewMode prop에 따라 초기 view 설정
+  React.useEffect(() => {
+    if (viewMode === "1주") setView("week");
+    else if (viewMode === "2주") setView("two-weeks");
+    else if (viewMode === "1달") setView("month");
+  }, [viewMode]);
 
   const days = React.useMemo(() => {
     if (view === "week") {

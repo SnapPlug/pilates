@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "./button";
 import { supabaseClient } from "@/lib/supabaseClient";
 
@@ -12,6 +12,11 @@ interface MembershipModalProps {
   onSuccess: () => void;
 }
 
+interface SystemSettings {
+  weeklyRecommendedSessions: number;
+  membershipExpirationBuffer: number;
+}
+
 export function MembershipModal({
   isOpen,
   onClose,
@@ -20,7 +25,12 @@ export function MembershipModal({
   onSuccess
 }: MembershipModalProps) {
   const [loading, setLoading] = useState(false);
+  const [systemSettings, setSystemSettings] = useState<SystemSettings>({
+    weeklyRecommendedSessions: 2,
+    membershipExpirationBuffer: 3 // 기본값 설정
+  });
   const [form, setForm] = useState({
+    membership_type: "",
     total_sessions: "",
     remaining_sessions: "",
     start_date: "",
@@ -28,6 +38,87 @@ export function MembershipModal({
     price: "",
     notes: ""
   });
+
+  // 시스템 설정 로드
+  useEffect(() => {
+    const loadSystemSettings = async () => {
+      try {
+        const response = await fetch('/api/settings');
+        if (response.ok) {
+          const data = await response.json();
+          setSystemSettings({
+            weeklyRecommendedSessions: data.weeklyRecommendedSessions || 2,
+            membershipExpirationBuffer: data.membershipExpirationBuffer || 3 // 설정에서 로드
+          });
+        }
+      } catch (error) {
+        console.error('시스템 설정 로드 실패:', error);
+      }
+    };
+
+    if (isOpen) {
+      loadSystemSettings();
+    }
+  }, [isOpen]);
+
+  // 총 횟수 변경 시 자동으로 만료일 계산
+  const handleTotalSessionsChange = (value: string) => {
+    const totalSessions = Number(value);
+    const startDate = form.start_date;
+    
+    if (totalSessions && startDate && systemSettings.weeklyRecommendedSessions) {
+      // 주간 권장 횟수로 나누어 필요한 주 수 계산
+      const weeksNeeded = Math.ceil(totalSessions / systemSettings.weeklyRecommendedSessions);
+      
+      // 시작일로부터 계산된 주 수만큼 더하기
+      const startDateObj = new Date(startDate);
+      const endDateObj = new Date(startDateObj);
+      endDateObj.setDate(startDateObj.getDate() + (weeksNeeded * 7));
+      
+      // 버퍼 일수 추가 (설정에서 가져온 값)
+      endDateObj.setDate(endDateObj.getDate() + systemSettings.membershipExpirationBuffer);
+      
+      // YYYY-MM-DD 형식으로 변환
+      const endDate = endDateObj.toISOString().split('T')[0];
+      
+      setForm(prev => ({
+        ...prev,
+        total_sessions: value,
+        end_date: endDate
+      }));
+    } else {
+      setForm(prev => ({ ...prev, total_sessions: value }));
+    }
+  };
+
+  // 시작일 변경 시 자동으로 만료일 계산
+  const handleStartDateChange = (value: string) => {
+    const totalSessions = Number(form.total_sessions);
+    
+    if (totalSessions && value && systemSettings.weeklyRecommendedSessions) {
+      // 주간 권장 횟수로 나누어 필요한 주 수 계산
+      const weeksNeeded = Math.ceil(totalSessions / systemSettings.weeklyRecommendedSessions);
+      
+      // 시작일로부터 계산된 주 수만큼 더하기
+      const startDateObj = new Date(value);
+      const endDateObj = new Date(startDateObj);
+      endDateObj.setDate(startDateObj.getDate() + (weeksNeeded * 7));
+      
+      // 버퍼 일수 추가 (설정에서 가져온 값)
+      endDateObj.setDate(endDateObj.getDate() + systemSettings.membershipExpirationBuffer);
+      
+      // YYYY-MM-DD 형식으로 변환
+      const endDate = endDateObj.toISOString().split('T')[0];
+      
+      setForm(prev => ({
+        ...prev,
+        start_date: value,
+        end_date: endDate
+      }));
+    } else {
+      setForm(prev => ({ ...prev, start_date: value }));
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -47,7 +138,7 @@ export function MembershipModal({
         .from('membership_history')
         .insert({
           member_id: memberId,
-          membership_type: '통합제',
+          membership_type: form.membership_type,
           total_sessions: Number(form.total_sessions),
           remaining_sessions: Number(form.remaining_sessions || form.total_sessions),
           start_date: form.start_date,
@@ -61,7 +152,7 @@ export function MembershipModal({
 
       console.log('회원권 등록 시도:', {
         member_id: memberId,
-        membership_type: '통합제',
+        membership_type: form.membership_type,
         total_sessions: Number(form.total_sessions),
         remaining_sessions: Number(form.remaining_sessions || form.total_sessions),
         start_date: form.start_date,
@@ -97,6 +188,7 @@ export function MembershipModal({
       
       // 폼 초기화
       setForm({
+        membership_type: "",
         total_sessions: "",
         remaining_sessions: "",
         start_date: "",
@@ -125,17 +217,57 @@ export function MembershipModal({
         <p className="text-sm text-gray-600 mb-4">회원: {memberName}</p>
         
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* 회원권 유형 */}
+          <div>
+            <label className="block text-sm font-medium mb-1">회원권 유형 *</label>
+            <select
+              value={form.membership_type}
+              onChange={(e) => {
+                const type = e.target.value;
+                let sessions = "";
+                if (type === "10회권") sessions = "10";
+                else if (type === "20회권") sessions = "20";
+                else if (type === "50회권") sessions = "50";
+                
+                setForm(prev => ({ 
+                  ...prev, 
+                  membership_type: type,
+                  total_sessions: sessions
+                }));
+                
+                // 총 횟수가 변경되면 만료일도 자동 계산
+                if (sessions && form.start_date) {
+                  handleTotalSessionsChange(sessions);
+                }
+              }}
+              className="w-full p-2 border rounded text-sm"
+              required
+            >
+              <option value="">선택하세요</option>
+              <option value="10회권">10회권</option>
+              <option value="20회권">20회권</option>
+              <option value="50회권">50회권</option>
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              회원권의 유형을 선택하세요.
+            </p>
+          </div>
+
           {/* 총 횟수 */}
           <div>
             <label className="block text-sm font-medium mb-1">총 횟수 *</label>
             <input
               type="number"
               value={form.total_sessions}
-              onChange={(e) => setForm(prev => ({ ...prev, total_sessions: e.target.value }))}
+              onChange={(e) => handleTotalSessionsChange(e.target.value)}
               className="w-full p-2 border rounded text-sm"
               min="1"
               required
             />
+            <p className="text-xs text-gray-500 mt-1">
+              설정된 주간 권장 횟수({systemSettings.weeklyRecommendedSessions}회)를 기반으로 만료일이 자동 계산됩니다.
+              추가로 {systemSettings.membershipExpirationBuffer}일의 여유 기간이 포함됩니다.
+            </p>
           </div>
 
           {/* 잔여 횟수 */}
@@ -158,10 +290,13 @@ export function MembershipModal({
             <input
               type="date"
               value={form.start_date}
-              onChange={(e) => setForm(prev => ({ ...prev, start_date: e.target.value }))}
+              onChange={(e) => handleStartDateChange(e.target.value)}
               className="w-full p-2 border rounded text-sm"
               required
             />
+            <p className="text-xs text-gray-500 mt-1">
+              시작일을 선택하면 총 횟수에 따라 만료일이 자동으로 계산됩니다.
+            </p>
           </div>
 
           {/* 종료일 */}
@@ -175,6 +310,12 @@ export function MembershipModal({
               min={form.start_date}
               required
             />
+            <p className="text-xs text-gray-500 mt-1">
+              {form.total_sessions && form.start_date ? 
+                `예상 기간: ${Math.ceil(Number(form.total_sessions) / systemSettings.weeklyRecommendedSessions)}주 + ${systemSettings.membershipExpirationBuffer}일 여유` : 
+                '1주간 권장 횟수에 따라 자동 계산됩니다.'
+              }
+            </p>
           </div>
 
           {/* 가격 */}

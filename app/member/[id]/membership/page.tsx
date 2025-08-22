@@ -92,6 +92,8 @@ export default function MembershipPage() {
     start_date: "",
     end_date: "",
     total_sessions: "",
+    used_sessions: "",
+    remaining_sessions: "",
     notes: ""
   });
   
@@ -107,11 +109,84 @@ export default function MembershipPage() {
     remaining_sessions: "",
     notes: ""
   });
-
+  
   // 회원권 삭제 관련 상태
   const [showDeleteMembershipModal, setShowDeleteMembershipModal] = useState(false);
   const [deletingMembership, setDeletingMembership] = useState<MembershipHistory | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // 시스템 설정 상태
+  const [systemSettings, setSystemSettings] = useState({
+    weeklyRecommendedSessions: 2,
+    membershipExpirationBuffer: 3
+  });
+
+  // 시스템 설정 로드
+  const loadSystemSettings = async () => {
+    try {
+      const response = await fetch('/api/settings');
+      if (response.ok) {
+        const data = await response.json();
+        setSystemSettings({
+          weeklyRecommendedSessions: data.weeklyRecommendedSessions || 2,
+          membershipExpirationBuffer: data.membershipExpirationBuffer || 3
+        });
+        console.log('시스템 설정 로드 완료:', data);
+      }
+    } catch (error) {
+      console.error('시스템 설정 로드 실패:', error);
+    }
+  };
+
+  // 설정 변경 감지를 위한 주기적 확인
+  useEffect(() => {
+    if (memberId) {
+      // 초기 설정 로드
+      loadSystemSettings();
+      
+      // 2초마다 설정 변경 확인 (설정 페이지에서 변경 시 실시간 반영)
+      const interval = setInterval(() => {
+        loadSystemSettings();
+      }, 2000);
+      
+      return () => clearInterval(interval);
+    }
+  }, [memberId]);
+
+  // 시작일 변경 시 만료일 자동 계산
+  const handleStartDateChange = (startDate: string) => {
+    const totalSessions = Number(membershipForm.total_sessions);
+    
+    if (totalSessions && startDate) {
+      // 설정에서 가져온 1주간 권장 횟수 사용
+      const weeklyRecommendedSessions = systemSettings.weeklyRecommendedSessions;
+      const weeksNeeded = Math.ceil(totalSessions / weeklyRecommendedSessions);
+      
+      // 시작일로부터 계산된 주 수만큼 더하기
+      const startDateObj = new Date(startDate);
+      const endDateObj = new Date(startDateObj);
+      endDateObj.setDate(startDateObj.getDate() + (weeksNeeded * 7));
+      
+      // YYYY-MM-DD 형식으로 변환
+      const endDate = endDateObj.toISOString().split('T')[0];
+      
+      console.log('만료일 자동 계산:', {
+        totalSessions,
+        weeklyRecommendedSessions,
+        weeksNeeded,
+        startDate,
+        endDate
+      });
+      
+      setMembershipForm(prev => ({
+        ...prev,
+        start_date: startDate,
+        end_date: endDate
+      }));
+    } else {
+      setMembershipForm(prev => ({ ...prev, start_date: startDate }));
+    }
+  };
 
   const fetchMemberData = async () => {
     console.log('=== fetchMemberData 시작 ===');
@@ -229,7 +304,11 @@ export default function MembershipPage() {
   // Supabase 연결 테스트 함수
   const testSupabaseConnection = async () => {
     console.log('=== Supabase 연결 테스트 ===');
+    console.log('supabase 객체 확인:', !!supabase);
+    console.log('supabase.from 메서드 확인:', typeof supabase?.from);
+    
     try {
+      console.log('membership_history 테이블 조회 시도...');
       const { data, error } = await supabase
         .from('membership_history')
         .select('id')
@@ -239,6 +318,9 @@ export default function MembershipPage() {
       
       if (error) {
         console.error('Supabase 연결 오류:', error);
+        console.error('오류 코드:', error.code);
+        console.error('오류 메시지:', error.message);
+        console.error('오류 상세:', error.details);
         return false;
       }
       
@@ -246,6 +328,8 @@ export default function MembershipPage() {
       return true;
     } catch (error) {
       console.error('Supabase 연결 예외:', error);
+      console.error('예외 타입:', typeof error);
+      console.error('예외 내용:', error);
       return false;
     }
   };
@@ -263,11 +347,34 @@ export default function MembershipPage() {
   // 회원권 추가 모달 열기
   const handleShowAddMembership = () => {
     const today = new Date().toISOString().split('T')[0];
+    
+    // 기본값으로 10회권을 가정하여 만료일 계산
+    const defaultSessions = 10;
+    const weeklyRecommendedSessions = systemSettings.weeklyRecommendedSessions;
+    const weeksNeeded = Math.ceil(defaultSessions / weeklyRecommendedSessions);
+    
+    // 시작일로부터 계산된 주 수만큼 더하기
+    const startDateObj = new Date(today);
+    const endDateObj = new Date(startDateObj);
+    endDateObj.setDate(startDateObj.getDate() + (weeksNeeded * 7));
+    
+    const endDate = endDateObj.toISOString().split('T')[0];
+    
+    console.log('기본 만료일 계산:', {
+      defaultSessions,
+      weeklyRecommendedSessions,
+      weeksNeeded,
+      startDate: today,
+      endDate
+    });
+    
     setMembershipForm({
       membership_type: "",
       start_date: today,
-      end_date: "",
+      end_date: endDate,
       total_sessions: "",
+      used_sessions: "",
+      remaining_sessions: "",
       notes: ""
     });
     setShowAddMembershipModal(true);
@@ -280,39 +387,179 @@ export default function MembershipPage() {
       return;
     }
 
+    let insertData: any = null; // insertData를 함수 전체에서 사용할 수 있도록 선언
+    let calculatedEndDate: string = ''; // calculatedEndDate를 함수 전체에서 사용할 수 있도록 선언
+
     try {
-      const { error } = await supabase
-        .from('membership_history')
-        .insert({
+      // 데이터 유효성 검사
+      if (!memberId) {
+        throw new Error('회원 ID가 없습니다.');
+      }
+      if (!membershipForm.membership_type) {
+        throw new Error('회원권 종류가 선택되지 않았습니다.');
+      }
+      if (!membershipForm.start_date) {
+        throw new Error('시작일이 설정되지 않았습니다.');
+      }
+      if (!membershipForm.total_sessions || Number(membershipForm.total_sessions) <= 0) {
+        throw new Error('총 횟수가 올바르지 않습니다.');
+      }
+
+      // end_date가 없거나 빈 값인 경우 자동 계산
+      calculatedEndDate = membershipForm.end_date;
+      if (!calculatedEndDate || calculatedEndDate.trim() === '') {
+        console.log('end_date가 누락되어 자동 계산합니다.');
+        
+        const totalSessions = Number(membershipForm.total_sessions);
+        const weeklyRecommendedSessions = systemSettings.weeklyRecommendedSessions;
+        const weeksNeeded = Math.ceil(totalSessions / weeklyRecommendedSessions);
+        
+        const startDateObj = new Date(membershipForm.start_date);
+        const endDateObj = new Date(startDateObj);
+        endDateObj.setDate(startDateObj.getDate() + (weeksNeeded * 7));
+        
+        calculatedEndDate = endDateObj.toISOString().split('T')[0];
+        
+        console.log('자동 계산된 end_date:', {
+          totalSessions,
+          weeklyRecommendedSessions,
+          weeksNeeded,
+          startDate: membershipForm.start_date,
+          calculatedEndDate
+        });
+      }
+
+      if (!calculatedEndDate) {
+        throw new Error('만료일을 계산할 수 없습니다.');
+      }
+
+      console.log('회원권 추가 시도:', {
+        member_id: memberId,
+        membership_type: membershipForm.membership_type,
+        start_date: membershipForm.start_date,
+        end_date: calculatedEndDate, // 자동 계산된 end_date 사용
+        total_sessions: Number(membershipForm.total_sessions),
+        used_sessions: 0,
+        remaining_sessions: Number(membershipForm.total_sessions),
+        status: "활성",
+        notes: membershipForm.notes || null
+      });
+
+      // Supabase 연결 상태 확인
+      console.log('Supabase 클라이언트 상태:', {
+        hasClient: !!supabase,
+        hasFrom: !!supabase?.from,
+        hasInsert: !!supabase?.from('membership_history')?.insert
+      });
+
+      // 테이블 스키마 확인을 위한 테스트 쿼리
+      try {
+        const { data: schemaData, error: schemaError } = await supabase
+          .from('membership_history')
+          .select('*')
+          .limit(1);
+        
+        console.log('테이블 스키마 확인:', { schemaData, schemaError });
+        
+        // 기존 데이터의 status 값 확인
+        if (schemaData && schemaData.length > 0) {
+          console.log('기존 데이터의 status 값들:', schemaData.map(item => item.status));
+        }
+      } catch (schemaErr) {
+        console.log('스키마 확인 오류:', schemaErr);
+      }
+
+      // status 값 테스트 - 다양한 값으로 시도
+      const statusValues = ['활성', 'active', 'ACTIVE', 'Active'];
+      
+      for (const statusValue of statusValues) {
+        console.log(`${statusValue} status로 시도 중...`);
+        
+        insertData = {
           member_id: memberId,
-          membership_type: membershipForm.membership_type,
+          membership_type: membershipForm.membership_type, // 원래 값 그대로 사용
           start_date: membershipForm.start_date,
-          end_date: membershipForm.end_date,
+          end_date: calculatedEndDate,
           total_sessions: Number(membershipForm.total_sessions),
           used_sessions: 0,
           remaining_sessions: Number(membershipForm.total_sessions),
-          status: "활성",
+          status: statusValue,
           notes: membershipForm.notes || null
-        });
+        };
 
-      if (error) throw error;
+        console.log(`${statusValue} status로 시도:`, insertData);
 
-      // 성공적으로 추가된 경우
-      setShowAddMembershipModal(false);
-      setMembershipForm({
-        membership_type: "",
-        start_date: "",
-        end_date: "",
-        total_sessions: "",
-        notes: ""
-      });
-      
-      // 회원권 목록 새로고침
-      await fetchMemberData();
-      alert("회원권이 성공적으로 추가되었습니다.");
-    } catch (error) {
+        const { data, error } = await supabase
+          .from('membership_history')
+          .insert(insertData)
+          .select()
+          .single();
+
+        if (!error) {
+          console.log(`${statusValue} status로 성공!`, data);
+          // 성공적으로 추가된 경우
+          setShowAddMembershipModal(false);
+          setMembershipForm({
+            membership_type: "",
+            start_date: "",
+            end_date: "",
+            total_sessions: "",
+            used_sessions: "",
+            remaining_sessions: "",
+            notes: ""
+          });
+          
+          // 회원권 목록 새로고침
+          await fetchMemberData();
+          alert("회원권이 성공적으로 추가되었습니다.");
+          return; // 성공하면 함수 종료
+        } else {
+          console.log(`${statusValue} status 실패:`, error);
+          if (error.code !== '23514') {
+            // status가 아닌 다른 오류인 경우 중단
+            throw error;
+          }
+        }
+      }
+
+      // 모든 status 값이 실패한 경우
+      throw new Error('모든 status 값이 실패했습니다. 데이터베이스 제약 조건을 확인해주세요.');
+    } catch (error: any) {
       console.error('회원권 추가 오류:', error);
-      alert('회원권 추가에 실패했습니다. 다시 시도해주세요.');
+      
+      // 구체적인 오류 메시지 표시
+      let errorMessage = '회원권 추가에 실패했습니다.';
+      let details = '';
+      
+      if (error?.code === '23514') {
+        errorMessage = '회원권 상태가 올바르지 않습니다.';
+        details = `시도한 모든 status 값이 실패했습니다.\n\n시도한 값들: active, 활성, ACTIVE, Active, 대기, waiting, WAITING\n\n데이터베이스의 실제 제약 조건을 확인해주세요.`;
+      } else if (error?.code === '23502') {
+        errorMessage = '필수 필드가 누락되었습니다.';
+        details = '모든 필수 항목을 입력해주세요.';
+      } else if (error?.code === '23503') {
+        errorMessage = '존재하지 않는 회원입니다.';
+        details = '회원 정보를 다시 확인해주세요.';
+      } else if (error?.code === '42501') {
+        errorMessage = '권한이 없습니다.';
+        details = '관리자 권한이 필요합니다.';
+      } else if (error?.message) {
+        errorMessage = `오류: ${error.message}`;
+        details = '잠시 후 다시 시도해주세요.';
+      }
+      
+      const fullMessage = details ? `${errorMessage}\n\n${details}` : errorMessage;
+      alert(fullMessage);
+      
+      // 콘솔에 상세 오류 정보 출력
+      console.error('오류 상세 정보:', {
+        code: error?.code,
+        message: error?.message,
+        details: error?.details,
+        hint: error?.hint,
+        formData: membershipForm,
+        insertData: insertData
+      });
     }
   };
 
@@ -726,46 +973,75 @@ export default function MembershipPage() {
         {showAddMembershipModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
             <div className="w-full max-w-lg rounded-xl border bg-background p-6 shadow-lg">
-              <div className="text-lg font-medium mb-4">✨ 새로운 회원권 등록</div>
+              <div className="text-lg font-medium mb-2">✨ 새로운 회원권 등록</div>
+              <div className="text-sm text-gray-600 mb-4">
+                회원에게 새로운 회원권을 등록합니다. 시작일을 설정하면 만료일이 자동으로 계산됩니다.
+              </div>
               
               <div className="space-y-4">
                 <label className="block text-sm">
                   회원권 종류 *
+                  <div className="text-xs text-gray-500 mt-1 mb-1">
+                    회원권의 유형을 선택하세요.
+                  </div>
                   <select 
                     className="mt-1 w-full h-10 rounded border bg-background px-3 text-sm" 
                     value={membershipForm.membership_type} 
-                    onChange={(e) => setMembershipForm(prev => ({ ...prev, membership_type: e.target.value }))}
+                    onChange={(e) => {
+                      const type = e.target.value;
+                      let sessions = "";
+                      if (type === "10회권") sessions = "10";
+                      else if (type === "20회권") sessions = "20";
+                      else if (type === "50회권") sessions = "50";
+                      
+                      setMembershipForm(prev => ({ 
+                        ...prev, 
+                        membership_type: type,
+                        total_sessions: sessions
+                      }));
+                      
+                      // 총 횟수가 변경되면 만료일도 자동 계산
+                      if (sessions && membershipForm.start_date) {
+                        const totalSessions = Number(sessions);
+                        const weeklyRecommendedSessions = systemSettings.weeklyRecommendedSessions;
+                        const weeksNeeded = Math.ceil(totalSessions / weeklyRecommendedSessions);
+                        
+                        // 시작일로부터 계산된 주 수만큼 더하기
+                        const startDateObj = new Date(membershipForm.start_date);
+                        const endDateObj = new Date(startDateObj);
+                        endDateObj.setDate(startDateObj.getDate() + (weeksNeeded * 7));
+                        
+                        // YYYY-MM-DD 형식으로 변환
+                        const endDate = endDateObj.toISOString().split('T')[0];
+                        
+                        console.log('회원권 유형 변경 시 만료일 자동 계산:', {
+                          type,
+                          totalSessions,
+                          weeklyRecommendedSessions,
+                          weeksNeeded,
+                          startDate: membershipForm.start_date,
+                          endDate
+                        });
+                        
+                        setMembershipForm(prev => ({
+                          ...prev,
+                          end_date: endDate
+                        }));
+                      }
+                    }}
                   >
                     <option value="">선택해주세요</option>
-                    <option value="횟수제">횟수제</option>
-                    <option value="기간제">기간제</option>
-                    <option value="통합제">통합제</option>
+                    <option value="10회권">10회권</option>
+                    <option value="20회권">20회권</option>
+                    <option value="50회권">50회권</option>
                   </select>
                 </label>
                 
-                <div className="grid grid-cols-2 gap-3">
-                  <label className="block text-sm">
-                    시작일 *
-                    <input 
-                      type="date" 
-                      className="mt-1 w-full h-10 rounded border bg-background px-3 text-sm" 
-                      value={membershipForm.start_date} 
-                      onChange={(e) => setMembershipForm(prev => ({ ...prev, start_date: e.target.value }))} 
-                    />
-                  </label>
-                  <label className="block text-sm">
-                    만료일 *
-                    <input 
-                      type="date" 
-                      className="mt-1 w-full h-10 rounded border bg-background px-3 text-sm" 
-                      value={membershipForm.end_date} 
-                      onChange={(e) => setMembershipForm(prev => ({ ...prev, end_date: e.target.value }))} 
-                    />
-                  </label>
-                </div>
-                
                 <label className="block text-sm">
                   총 횟수 *
+                  <div className="text-xs text-gray-500 mt-1 mb-1">
+                    설정된 주간 권장 횟수({systemSettings.weeklyRecommendedSessions}회)를 기반으로 만료일이 자동 계산됩니다.
+                  </div>
                   <input 
                     type="number" 
                     className="mt-1 w-full h-10 rounded border bg-background px-3 text-sm" 
@@ -775,10 +1051,46 @@ export default function MembershipPage() {
                   />
                 </label>
                 
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="block text-sm">
+                    시작일 *
+                    <div className="text-xs text-gray-500 mt-1 mb-1">
+                      시작일을 선택하면 총 횟수에 따라 만료일이 자동으로 계산됩니다.
+                    </div>
+                    <input 
+                      type="date" 
+                      className="mt-1 w-full h-10 rounded border bg-background px-3 text-sm" 
+                      value={membershipForm.start_date} 
+                      onChange={(e) => handleStartDateChange(e.target.value)} 
+                    />
+                  </label>
+                  <label className="block text-sm">
+                    만료일 *
+                    <div className="text-xs text-gray-500 mt-1 mb-1">
+                      {membershipForm.total_sessions && membershipForm.start_date ? 
+                        `예상 기간: ${Math.ceil(Number(membershipForm.total_sessions) / systemSettings.weeklyRecommendedSessions)}주` : 
+                        '1주간 권장 횟수에 따라 자동 계산됩니다.'
+                      }
+                    </div>
+                    <input 
+                      type="date" 
+                      className="mt-1 w-full h-10 rounded border bg-background px-3 text-sm" 
+                      value={membershipForm.end_date} 
+                      onChange={(e) => {
+                        console.log('만료일 변경:', e.target.value);
+                        setMembershipForm(prev => ({ ...prev, end_date: e.target.value }));
+                      }} 
+                    />
+                  </label>
+                </div>
+                
                 <label className="block text-sm">
                   메모 (선택사항)
+                  <div className="text-xs text-gray-500 mt-1 mb-1">
+                    회원권 관련 특이사항이나 메모를 입력하세요.
+                  </div>
                   <textarea 
-                    className="mt-1 w-full h-20 rounded border bg-background px-3 py-2 text-sm resize-none" 
+                    className="mt-1 w-full h-20 rounded border bg-background px-3 py-3 text-sm resize-none" 
                     placeholder="회원권 관련 메모를 입력하세요"
                     value={membershipForm.notes} 
                     onChange={(e) => setMembershipForm(prev => ({ ...prev, notes: e.target.value }))} 
@@ -786,16 +1098,17 @@ export default function MembershipPage() {
                 </label>
               </div>
 
-              <div className="flex justify-end gap-2 mt-6">
+              <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
                 <Button 
                   variant="outline" 
                   onClick={() => setShowAddMembershipModal(false)}
+                  className="px-6"
                 >
                   취소
                 </Button>
                 <Button 
                   onClick={handleAddMembership}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-6"
                 >
                   회원권 등록
                 </Button>
@@ -822,9 +1135,9 @@ export default function MembershipPage() {
                     }}
                   >
                     <option value="">선택해주세요</option>
-                    <option value="횟수제">횟수제</option>
-                    <option value="기간제">기간제</option>
-                    <option value="통합제">통합제</option>
+                    <option value="10회권">10회권</option>
+                    <option value="20회권">20회권</option>
+                    <option value="50회권">50회권</option>
                   </select>
                 </label>
                 

@@ -10,6 +10,8 @@ import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
+import { createLogContext, logDebug, logError } from "@/lib/logger";
+import type { SystemSettings } from "@/app/api/settings/route";
 
 // 에러 바운더리 컴포넌트
 function ErrorBoundary({ children }: { children: React.ReactNode }) {
@@ -87,6 +89,16 @@ function ReservationInner() {
   const [reservationsByClass, setReservationsByClass] = useState<Record<string, number>>({});
   const [instructors, setInstructors] = useState<Array<{id: string, name: string}>>([]);
 
+  // 시스템 설정
+  const [systemSettings, setSystemSettings] = useState<SystemSettings>({
+    showInstructorName: true,
+    showClassName: true,
+    calendarView: '1주',
+    weeklyRecommendedSessions: 2,
+    membershipExpirationBuffer: 3,
+    remainingSessionsThreshold: 3
+  });
+
   // 강사 이름 가져오기 함수
   const getInstructorName = (instructorId: string | null, instructorList: Array<{id: string, name: string}>): string => {
     if (!instructorId) return "미지정";
@@ -136,8 +148,25 @@ function ReservationInner() {
     }
   };
 
+  // 시스템 설정 로드
+  const loadSystemSettings = async () => {
+    try {
+      const response = await fetch('/api/settings');
+      if (response.ok) {
+        const settings = await response.json();
+        setSystemSettings(settings);
+      }
+    } catch (error) {
+      console.error('시스템 설정 로드 실패:', error);
+    }
+  };
+
   useEffect(() => {
     console.log("ReservationInner 컴포넌트 마운트됨");
+    
+    // 시스템 설정 로드
+    loadSystemSettings();
+    
     const fetchData = async () => {
       try {
         setLoading(true);
@@ -743,7 +772,11 @@ function ReservationInner() {
                                     {classItem.class_date} {classItem.class_time}
                                   </div>
                                   <div className="text-xs text-muted-foreground">
-                                    {classItem.class_name} • {classItem.instructor_name}
+                                    {systemSettings.showClassName ? classItem.class_name : ''} 
+                                    {systemSettings.showInstructorName ? 
+                                      (systemSettings.showClassName ? ' • ' : '') + classItem.instructor_name : 
+                                      ''
+                                    }
                                   </div>
                                   <div className="text-xs text-muted-foreground">
                                     예약 {reserved}/{classItem.capacity}
@@ -770,7 +803,11 @@ function ReservationInner() {
       ) : (
         // 기존 예약 화면
         <>
-          <Calendar onSelect={(d) => setSelectedDate(d)} dayStatus={dayStatus} />
+          <Calendar 
+            onSelect={(d) => setSelectedDate(d)} 
+            dayStatus={dayStatus} 
+            viewMode={systemSettings.calendarView}
+          />
 
           <div className="rounded-md border p-4">
             <div className="mb-3 text-sm text-muted-foreground">
@@ -804,7 +841,11 @@ function ReservationInner() {
                     <div className="flex-1">
                       <div className="text-sm font-medium">{row.class_time}</div>
                       <div className="text-xs text-muted-foreground">
-                        {row.class_name} • {row.instructor_name}
+                        {systemSettings.showClassName ? row.class_name : ''} 
+                        {systemSettings.showInstructorName ? 
+                          (systemSettings.showClassName ? ' • ' : '') + row.instructor_name : 
+                          ''
+                        }
                       </div>
                       <div className="text-xs text-muted-foreground">
                         예약 {reserved}/{row.capacity}
