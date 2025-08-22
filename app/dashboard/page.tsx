@@ -104,8 +104,8 @@ export default function DashboardPage() {
       const membersByRemainingSessions: { [sessions: number]: number } = {};
       const memberDetailList: MemberDetail[] = [];
 
-      members?.forEach(member => {
-        const membership = member.membership_history?.[0];
+      members?.forEach((member: any) => {
+        const membership = member.membership_history?.[0] as any;
         
         if (membership) {
           const isActive = membership.status === '활성' && 
@@ -157,12 +157,12 @@ export default function DashboardPage() {
 
       // 5. 예약 상세 정보 (날짜순으로 정렬)
       const reservationDetailList: ReservationDetail[] = (reservations || [])
-        .sort((a, b) => {
+        .sort((a: any, b: any) => {
           const dateA = (a.class as any)?.class_date || '';
           const dateB = (b.class as any)?.class_date || '';
           return dateB.localeCompare(dateA); // 최신 날짜가 먼저 오도록 내림차순 정렬
         })
-        .map(r => ({
+        .map((r: any) => ({
           id: r.id,
           memberName: r.name,
           className: (r.class as any)?.class_name || '수업명 없음',
