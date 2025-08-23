@@ -228,7 +228,7 @@ export default function DashboardPage() {
             // 설정값에 따른 잔여 횟수 분류
             if (remainingSessions <= systemSettings.remainingSessionsThreshold) {
               const key = `${remainingSessions}회 이하`;
-              if (!membersByRemainingSessions[key as keyof typeof membersByRemainingSessions]) {
+              if (!(membersByRemainingSessions as any)[key]) {
                 (membersByRemainingSessions as any)[key] = 0;
               }
               (membersByRemainingSessions as any)[key]++;
@@ -237,7 +237,7 @@ export default function DashboardPage() {
             // 설정값에 따른 만료 기간 분류
             if (daysUntilExpiry <= systemSettings.membershipExpirationBuffer && daysUntilExpiry > 0) {
               const key = `${daysUntilExpiry}일 이내`;
-              if (!membersByExpiryBuffer[key as keyof typeof membersByExpiryBuffer]) {
+              if (!(membersByExpiryBuffer as any)[key]) {
                 (membersByExpiryBuffer as any)[key] = 0;
               }
               (membersByExpiryBuffer as any)[key]++;
