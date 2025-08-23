@@ -37,15 +37,15 @@ export async function POST(request: NextRequest) {
     }
 
     // 출석 상태 업데이트
-    const { data, error } = await supabaseClient
+    const { data, error } = await (supabaseClient
       .from('reservation')
       .update({
         attendance_status: attendance_status,
         attendance_checked_at: new Date().toISOString(),
         attendance_checked_by: checked_by || 'admin'
-      })
+      } as any)
       .eq('id', reservation_id)
-      .select('id, name, attendance_status, attendance_checked_at, attendance_checked_by');
+      .select('id, name, attendance_status, attendance_checked_at, attendance_checked_by') as any);
 
     if (error) {
       console.error('출석 상태 업데이트 오류:', error);
